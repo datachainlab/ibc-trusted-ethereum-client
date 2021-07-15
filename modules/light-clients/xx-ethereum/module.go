@@ -1,7 +1,7 @@
 package ethereum
 
 import (
-	"github.com/datachainlab/ibc-trusted-etheruem-client/modules/light-clients/xx-ethereum/types"
+	"github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/xx-ethereum/types"
 )
 
 // Name returns the IBC client name
