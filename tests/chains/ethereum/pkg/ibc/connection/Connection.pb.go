@@ -5,10 +5,11 @@ package connection
 
 import (
 	fmt "fmt"
-	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
 	math_bits "math/bits"
+
+	proto "github.com/gogo/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -318,7 +319,7 @@ func init() {
 	proto.RegisterType((*ConnectionEnd)(nil), "ConnectionEnd")
 	proto.RegisterType((*Counterparty)(nil), "Counterparty")
 	proto.RegisterType((*MerklePrefix)(nil), "MerklePrefix")
-	proto.RegisterType((*Version)(nil), "Version")
+	proto.RegisterType((*Version)(nil), "Versions")
 }
 
 func init() { proto.RegisterFile("connection/Connection.proto", fileDescriptor_0e47af75a3093bd8) }
@@ -1083,10 +1084,10 @@ func (m *Version) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Version: wiretype end group for non-group")
+			return fmt.Errorf("proto: Versions: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Version: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Versions: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

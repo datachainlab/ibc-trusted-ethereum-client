@@ -16,16 +16,16 @@ type ContractState interface {
 	ETHProof() *ETHProof
 }
 
-func (cl Client) GetContractState(ctx context.Context, address common.Address, storageKeys [][]byte, bn *big.Int) (ContractState, error) {
-	switch cl.clientType {
+func (cl ChainClient) GetContractState(ctx context.Context, address common.Address, storageKeys [][]byte, bn *big.Int, clientType string) (ContractState, error) {
+	switch clientType {
 	case ibcclient.MockClient:
 		return cl.GetMockContractState(ctx, address, storageKeys, bn)
 	default:
-		panic(fmt.Sprintf("unknown client type '%v'", cl.clientType))
+		panic(fmt.Sprintf("unknown client type '%v'", clientType))
 	}
 }
 
-func (cl Client) GetMockContractState(ctx context.Context, address common.Address, storageKeys [][]byte, bn *big.Int) (ContractState, error) {
+func (cl ChainClient) GetMockContractState(ctx context.Context, address common.Address, storageKeys [][]byte, bn *big.Int) (ContractState, error) {
 	block, err := cl.BlockByNumber(ctx, bn)
 	if err != nil {
 		return nil, err

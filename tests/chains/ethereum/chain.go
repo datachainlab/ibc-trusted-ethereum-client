@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	clienttypes "github.com/cosmos/ibc-go/modules/core/02-client/types"
+	"github.com/cosmos/ibc-go/modules/core/exported"
 	"github.com/gogo/protobuf/proto"
 	pbtypes "github.com/gogo/protobuf/types"
 
@@ -35,7 +37,7 @@ import (
 	mockclienttypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/client/mock"
 	connectiontypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/connection"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/wallet"
-	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/types"
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
 var (
@@ -60,13 +62,14 @@ func init() {
 	abiGeneratedChannelIdentifier = parsedHostABI.Events["GeneratedChannelIdentifier"]
 }
 
-//var _ types.TestChainI = (*Chain)(nil)
+var _ types.MockProver = (*Chain)(nil)
+var _ types.TestChainI = (*Chain)(nil)
 
 type Chain struct {
 	t *testing.T
 
 	// Core Modules
-	client        client.Client
+	chainClient   client.ChainClient
 	IBCHandler    ibchandler.Ibchandler
 	IBCHost       ibchost.Ibchost
 	IBCIdentifier ibcidentifier.Ibcidentifier
@@ -85,11 +88,6 @@ type Chain struct {
 
 	// State
 	LastContractState client.ContractState
-
-	// IBC specific helpers
-	ClientIDs   []string                // ClientID's used on this chain
-	Connections []*types.TestConnection // track connectionID's created for this chain
-	IBCID       uint64
 }
 
 type ContractConfig interface {
@@ -104,40 +102,39 @@ type ContractConfig interface {
 	GetICS20BankAddress() common.Address
 }
 
-func NewChain(t *testing.T, chainID int64, client client.Client, config ContractConfig, mnemonicPhrase string, ibcID uint64) *Chain {
-	ibcHost, err := ibchost.NewIbchost(config.GetIBCHostAddress(), client)
+func NewChain(t *testing.T, chainID int64, chainClient client.ChainClient, config ContractConfig, mnemonicPhrase string, ibcID uint64) *Chain {
+	ibcHost, err := ibchost.NewIbchost(config.GetIBCHostAddress(), chainClient)
 	if err != nil {
 		t.Error(err)
 	}
-	ibcHandler, err := ibchandler.NewIbchandler(config.GetIBCHandlerAddress(), client)
+	ibcHandler, err := ibchandler.NewIbchandler(config.GetIBCHandlerAddress(), chainClient)
 	if err != nil {
 		t.Error(err)
 	}
-	ibcIdentifier, err := ibcidentifier.NewIbcidentifier(config.GetIBCIdentifierAddress(), client)
+	ibcIdentifier, err := ibcidentifier.NewIbcidentifier(config.GetIBCIdentifierAddress(), chainClient)
 	if err != nil {
 		t.Error(err)
 	}
-	simpletoken, err := simpletoken.NewSimpletoken(config.GetSimpleTokenAddress(), client)
+	simpletoken, err := simpletoken.NewSimpletoken(config.GetSimpleTokenAddress(), chainClient)
 	if err != nil {
 		t.Error(err)
 	}
-	ics20transfer, err := ics20transferbank.NewIcs20transferbank(config.GetICS20TransferBankAddress(), client)
+	ics20transfer, err := ics20transferbank.NewIcs20transferbank(config.GetICS20TransferBankAddress(), chainClient)
 	if err != nil {
 		t.Error(err)
 	}
-	ics20bank, err := ics20bank.NewIcs20bank(config.GetICS20BankAddress(), client)
+	ics20bank, err := ics20bank.NewIcs20bank(config.GetICS20BankAddress(), chainClient)
 	if err != nil {
 		t.Error(err)
 	}
 
 	return &Chain{
 		t:              t,
-		client:         client,
+		chainClient:    chainClient,
 		chainID:        chainID,
 		ContractConfig: config,
 		mnemonicPhrase: mnemonicPhrase,
 		keys:           make(map[uint32]*ecdsa.PrivateKey),
-		IBCID:          ibcID,
 
 		IBCHost:       *ibcHost,
 		IBCHandler:    *ibcHandler,
@@ -148,12 +145,16 @@ func NewChain(t *testing.T, chainID int64, client client.Client, config Contract
 	}
 }
 
-func (chain *Chain) Client() client.Client {
-	return chain.client
+func (chain *Chain) T() *testing.T {
+	return chain.t
 }
 
-func (chain *Chain) ClientType() string {
-	return chain.client.ClientType()
+func (chain *Chain) Init() error {
+	return nil
+}
+
+func (chain *Chain) Client() client.ChainClient {
+	return chain.chainClient
 }
 
 func (chain *Chain) TxOpts(ctx context.Context, index uint32) *bind.TransactOpts {
@@ -193,6 +194,73 @@ func (chain *Chain) GetCommitmentPrefix() []byte {
 	return []byte(types.DefaultPrefix)
 }
 
+func (chain *Chain) GetSenderAddress() string {
+	return ""
+}
+
+func (chain *Chain) NextBlock() {
+
+}
+
+func (chain *Chain) GetClientState(clientID string) ([]byte, bool, error) {
+	return chain.IBCHost.GetClientState(
+		chain.CallOpts(context.Background(), types.RelayerKeyIndex),
+		clientID,
+	)
+}
+
+func (chain *Chain) GetLatestHeight(clientID string, clientType string) (height exported.Height) {
+	var rh uint64
+	switch clientType {
+	case ibcclient.MockClient:
+		rh = chain.GetMockClientState(clientID).LatestHeight
+	default:
+		panic(fmt.Errorf("unknown chainClient type: '%v'", clientType))
+	}
+
+	return clienttypes.Height{
+		RevisionNumber: 0,
+		RevisionHeight: rh,
+	}
+}
+
+func (chain *Chain) UpdateHeader(clientType string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for {
+		state, err := chain.chainClient.GetContractState(
+			ctx,
+			chain.ContractConfig.GetIBCHostAddress(),
+			nil,
+			nil,
+			clientType,
+		)
+		if err != nil {
+			panic(err)
+		}
+		if chain.LastContractState == nil || state.Header().Number.Cmp(chain.LastHeader().Number) == 1 {
+			chain.LastContractState = state
+			return
+		} else {
+			continue
+		}
+	}
+}
+
+func (chain *Chain) GetConnection(connectionID string) (ibchost.ConnectionEndData, bool, error) {
+	return chain.IBCHost.GetConnection(
+		chain.CallOpts(context.Background(), types.RelayerKeyIndex),
+		connectionID,
+	)
+}
+
+func (chain *Chain) GetChannel(portID, channelID string) (ibchost.ChannelData, bool, error) {
+	return chain.IBCHost.GetChannel(
+		chain.CallOpts(context.Background(), types.RelayerKeyIndex),
+		portID, channelID,
+	)
+}
+
 func (chain *Chain) GetMockClientState(clientID string) *mockclienttypes.ClientState {
 	ctx := context.Background()
 	bz, found, err := chain.IBCHost.GetClientState(chain.CallOpts(ctx, types.RelayerKeyIndex), clientID)
@@ -208,75 +276,26 @@ func (chain *Chain) GetMockClientState(clientID string) *mockclienttypes.ClientS
 	return &cs
 }
 
-func (chain *Chain) GetContractState(counterparty *Chain, counterpartyClientID string, storageKeys [][]byte, height *big.Int) (client.ContractState, error) {
-	if height == nil {
-		switch counterparty.ClientType() {
-		case ibcclient.MockClient:
-			height = big.NewInt(int64(counterparty.GetMockClientState(counterpartyClientID).LatestHeight))
-		default:
-			return nil, fmt.Errorf("unknown client type: '%v'", counterparty.ClientType())
-		}
-	}
-	return chain.client.GetContractState(
+func (chain *Chain) GetContractState(
+	storageKeys [][]byte,
+	height *big.Int,
+	clientType string,
+) (client.ContractState, error) {
+	return chain.chainClient.GetContractState(
 		context.Background(),
 		chain.ContractConfig.GetIBCHostAddress(),
 		storageKeys,
 		height,
+		clientType,
 	)
 }
 
-func (chain *Chain) Init() error {
-	//ctx := context.Background()
-	//if err := chain.WaitIfNoError(ctx)(
-	//	chain.IBCHost.SetIBCModule(
-	//		chain.TxOpts(ctx, types.RelayerKeyIndex),
-	//		chain.ContractConfig.GetIBCHandlerAddress(),
-	//	),
-	//); err != nil {
-	//	return err
-	//}
-	//
-	//if name, err := chain.IBCIdentifier.PortCapabilityPath(chain.CallOpts(ctx, types.RelayerKeyIndex), types.TransferPort); err != nil {
-	//	return err
-	//} else if _, found, err := chain.IBCHost.GetModuleOwner(chain.CallOpts(ctx, types.RelayerKeyIndex), name); err != nil {
-	//	return err
-	//} else if !found {
-	//	if err := chain.WaitIfNoError(ctx)(
-	//		chain.IBCHandler.BindPort(chain.TxOpts(ctx, types.RelayerKeyIndex), types.TransferPort, chain.ContractConfig.GetICS20TransferBankAddress()),
-	//	); err != nil {
-	//		return err
-	//	}
-	//}
-	//
-	//if _, found, err := chain.IBCHost.GetClientImpl(chain.CallOpts(ctx, types.RelayerKeyIndex), ibcclient.MockClient); err != nil {
-	//	return err
-	//} else if !found {
-	//	if err := chain.WaitIfNoError(ctx)(
-	//		chain.IBCHandler.RegisterClient(
-	//			chain.TxOpts(ctx, types.RelayerKeyIndex),
-	//			ibcclient.MockClient,
-	//			chain.ContractConfig.GetMockClientAddress(),
-	//		),
-	//	); err != nil {
-	//		return err
-	//	}
-	//}
-	//
-	//if err := chain.WaitIfNoError(ctx)(
-	//	chain.ICS20Bank.SetOperator(chain.TxOpts(ctx, types.RelayerKeyIndex), chain.ContractConfig.GetICS20TransferBankAddress()),
-	//); err != nil {
-	//	return err
-	//}
-
-	return nil
-}
-
-func (chain *Chain) ConstructMockMsgCreateClient(counterparty *Chain) ibchandler.IBCMsgsMsgCreateClient {
+func (chain *Chain) ConstructMockMsgCreateClient() types.MsgCreateClient {
 	clientState := mockclienttypes.ClientState{
-		LatestHeight: counterparty.LastHeader().Number.Uint64(),
+		LatestHeight: chain.LastHeader().Number.Uint64(),
 	}
 	consensusState := mockclienttypes.ConsensusState{
-		Timestamp: counterparty.LastHeader().Time,
+		Timestamp: chain.LastHeader().Time,
 	}
 	clientStateBytes, err := MarshalWithAny(&clientState)
 	if err != nil {
@@ -286,16 +305,32 @@ func (chain *Chain) ConstructMockMsgCreateClient(counterparty *Chain) ibchandler
 	if err != nil {
 		panic(err)
 	}
-	return ibchandler.IBCMsgsMsgCreateClient{
+	return types.MsgCreateClient{
 		ClientType:          ibcclient.MockClient,
-		Height:              clientState.LatestHeight,
+		Height:              clienttypes.NewHeight(0, clientState.LatestHeight),
 		ClientStateBytes:    clientStateBytes,
 		ConsensusStateBytes: consensusStateBytes,
 	}
 }
 
-func (chain *Chain) ConstructMockMsgUpdateClient(counterparty *Chain, clientID string) ibchandler.IBCMsgsMsgUpdateClient {
-	cs := counterparty.LastContractState.(client.ETHContractState)
+func (chain *Chain) CreateClient(ctx context.Context, msg types.MsgCreateClient) (string, error) {
+	if err := chain.WaitIfNoError(ctx)(
+		chain.IBCHandler.CreateClient(
+			chain.TxOpts(ctx, types.RelayerKeyIndex),
+			ibchandler.IBCMsgsMsgCreateClient{
+				ClientType:          msg.ClientType,
+				Height:              msg.Height.GetRevisionHeight(),
+				ClientStateBytes:    msg.ClientStateBytes,
+				ConsensusStateBytes: msg.ConsensusStateBytes,
+			}),
+	); err != nil {
+		return "", err
+	}
+	return chain.GetLastGeneratedClientID(ctx)
+}
+
+func (chain *Chain) ConstructMockMsgUpdateClient(clientID string) types.MsgUpdateClient {
+	cs := chain.LastContractState.(client.ETHContractState)
 	header := mockclienttypes.Header{
 		Height:    cs.Header().Number.Uint64(),
 		Timestamp: cs.Header().Time,
@@ -304,95 +339,35 @@ func (chain *Chain) ConstructMockMsgUpdateClient(counterparty *Chain, clientID s
 	if err != nil {
 		panic(err)
 	}
-	return ibchandler.IBCMsgsMsgUpdateClient{
-		ClientId: clientID,
+	return types.MsgUpdateClient{
+		ClientID: clientID,
 		Header:   bz,
 	}
 }
 
-func (chain *Chain) UpdateHeader() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	for {
-		state, err := chain.client.GetContractState(ctx, chain.ContractConfig.GetIBCHostAddress(), nil, nil)
-		if err != nil {
-			panic(err)
-		}
-		if chain.LastContractState == nil || state.Header().Number.Cmp(chain.LastHeader().Number) == 1 {
-			chain.LastContractState = state
-			return
-		} else {
-			continue
-		}
-	}
-}
-
-func (chain *Chain) CreateClient(
-	ctx context.Context,
-	counterparty *Chain,
-	clientType string,
-) (clientID string, err error) {
-	switch clientType {
-	case ibcclient.MockClient:
-		clientID, err = chain.CreateMockClient(ctx, counterparty)
-	default:
-		err = fmt.Errorf("client type %s is not supported", clientType)
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	return clientID, nil
-}
-
-func (chain *Chain) UpdateClient(
-	ctx context.Context,
-	counterparty *Chain,
-	clientID string,
-) error {
-	var err error
-	switch counterparty.ClientType() {
-	case ibcclient.MockClient:
-		err = chain.UpdateMockClient(ctx, counterparty, clientID)
-	default:
-		err = fmt.Errorf("client type %s is not supported", counterparty.ClientType())
-	}
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (chain *Chain) CreateMockClient(ctx context.Context, counterparty *Chain) (string, error) {
-	msg := chain.ConstructMockMsgCreateClient(counterparty)
-	if err := chain.WaitIfNoError(ctx)(
-		chain.IBCHandler.CreateClient(chain.TxOpts(ctx, types.RelayerKeyIndex), msg),
-	); err != nil {
-		return "", err
-	}
-	return chain.GetLastGeneratedClientID(ctx)
-}
-
-func (chain *Chain) UpdateMockClient(ctx context.Context, counterparty *Chain, clientID string) error {
-	msg := chain.ConstructMockMsgUpdateClient(counterparty, clientID)
+func (chain *Chain) UpdateClient(ctx context.Context, msg types.MsgUpdateClient) error {
 	return chain.WaitIfNoError(ctx)(
-		chain.IBCHandler.UpdateClient(chain.TxOpts(ctx, types.RelayerKeyIndex), msg),
+		chain.IBCHandler.UpdateClient(
+			chain.TxOpts(ctx, types.RelayerKeyIndex),
+			ibchandler.IBCMsgsMsgUpdateClient{
+				ClientId: msg.ClientID,
+				Header:   msg.Header,
+			}),
 	)
 }
 
-func (chain *Chain) ConnectionOpenInit(ctx context.Context, counterparty *Chain, connection, counterpartyConnection *types.TestConnection) (string, error) {
+func (chain *Chain) ConnectionOpenInit(ctx context.Context, msg types.MsgConnectionOpenInit) (string, error) {
 	if err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ConnectionOpenInit(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgConnectionOpenInit{
-				ClientId: connection.ClientID,
+				ClientId: msg.ClientID,
 				Counterparty: ibchandler.CounterpartyData{
-					ClientId:     connection.CounterpartyClientID,
+					ClientId:     msg.CounterpartyClientID,
 					ConnectionId: "",
-					Prefix:       ibchandler.MerklePrefixData{KeyPrefix: counterparty.GetCommitmentPrefix()},
+					Prefix:       ibchandler.MerklePrefixData{KeyPrefix: msg.CounterpartyKeyPrefix},
 				},
-				DelayPeriod: types.DefaultDelayPeriod,
+				DelayPeriod: msg.DelayPeriod,
 			},
 		),
 	); err != nil {
@@ -401,34 +376,30 @@ func (chain *Chain) ConnectionOpenInit(ctx context.Context, counterparty *Chain,
 	return chain.GetLastGeneratedConnectionID(ctx)
 }
 
-func (chain *Chain) ConnectionOpenTry(ctx context.Context, counterparty *Chain, connection, counterpartyConnection *types.TestConnection) (string, error) {
-	proofConnection, err := counterparty.QueryConnectionProof(chain, connection.ClientID, counterpartyConnection.ID, nil)
-	if err != nil {
-		return "", err
-	}
-	clientStateBytes, proofClient, err := counterparty.QueryClientProof(chain, counterpartyConnection.ClientID, big.NewInt(int64(proofConnection.Height)))
-	if err != nil {
-		return "", err
-	}
+func (chain *Chain) ConnectionOpenTry(ctx context.Context, msg types.MsgConnectionOpenTry) (string, error) {
 	if err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ConnectionOpenTry(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgConnectionOpenTry{
 				PreviousConnectionId: "",
 				Counterparty: ibchandler.CounterpartyData{
-					ClientId:     counterpartyConnection.ClientID,
-					ConnectionId: counterpartyConnection.ID,
-					Prefix:       ibchandler.MerklePrefixData{KeyPrefix: counterparty.GetCommitmentPrefix()},
+					ClientId:     msg.CounterpartyClientID,
+					ConnectionId: msg.CounterpartyConnectionID,
+					Prefix:       ibchandler.MerklePrefixData{KeyPrefix: msg.CounterpartyKeyPrefix},
 				},
 				DelayPeriod:      types.DefaultDelayPeriod,
-				ClientId:         connection.ClientID,
-				ClientStateBytes: clientStateBytes,
-				CounterpartyVersions: []ibchandler.VersionData{
-					{Identifier: "1", Features: []string{"ORDER_ORDERED", "ORDER_UNORDERED"}},
-				},
-				ProofHeight: proofConnection.Height,
-				ProofInit:   proofConnection.Data,
-				ProofClient: proofClient.Data,
+				ClientId:         msg.ClientID,
+				ClientStateBytes: msg.ClientStateBytes,
+				CounterpartyVersions: []ibchandler.VersionData{{
+					Identifier: msg.Versions[0].GetIdentifier(),
+					Features:   msg.Versions[0].GetFeatures(),
+				}},
+				ProofInit:   msg.ProofInit.Data,
+				ProofHeight: msg.ProofInit.Height.GetRevisionHeight(),
+				ProofClient: msg.ProofClient.Data,
+				// TODO
+				//ProofConsensus:  msg.ProofConsensus.Data,
+				//ConsensusHeight: msg.ProofConsensus.Height.RevisionHeight,
 			},
 		),
 	); err != nil {
@@ -438,76 +409,57 @@ func (chain *Chain) ConnectionOpenTry(ctx context.Context, counterparty *Chain, 
 }
 
 // ConnectionOpenAck will construct and execute a MsgConnectionOpenAck.
-func (chain *Chain) ConnectionOpenAck(
-	ctx context.Context,
-	counterparty *Chain,
-	connection, counterpartyConnection *types.TestConnection,
-) error {
-	proofConnection, err := counterparty.QueryConnectionProof(chain, connection.ClientID, counterpartyConnection.ID, nil)
-	if err != nil {
-		return err
-	}
-	clientStateBytes, proofClient, err := counterparty.QueryClientProof(chain, counterpartyConnection.ClientID, big.NewInt(int64(proofConnection.Height)))
-	if err != nil {
-		return err
-	}
+func (chain *Chain) ConnectionOpenAck(ctx context.Context, msg types.MsgConnectionOpenAck) error {
 	return chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ConnectionOpenAck(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgConnectionOpenAck{
-				ConnectionId:             connection.ID,
-				CounterpartyConnectionID: counterpartyConnection.ID,
-				ClientStateBytes:         clientStateBytes,
-				Version:                  ibchandler.VersionData{Identifier: "1", Features: []string{"ORDER_ORDERED", "ORDER_UNORDERED"}},
-				ProofHeight:              proofConnection.Height,
-				ProofTry:                 proofConnection.Data,
-				ProofClient:              proofClient.Data,
+				ConnectionId:             msg.ConnectionID,
+				CounterpartyConnectionID: msg.CounterpartyConnectionID,
+				ClientStateBytes:         msg.ClientStateBytes,
+				Version: ibchandler.VersionData{
+					Identifier: msg.Version.GetIdentifier(),
+					Features:   msg.Version.GetFeatures(),
+				},
+				ProofHeight: msg.ProofClient.Height.GetRevisionHeight(),
+				ProofTry:    msg.ProofTry.Data,
+				ProofClient: msg.ProofClient.Data,
+				// TODO
+				//ProofConsensus:  msg.ProofConsensus.Data,
+				//ConsensusHeight: msg.ProofConsensus.Height.GetRevisionHeight(),
 			},
 		),
 	)
 }
 
-func (chain *Chain) ConnectionOpenConfirm(
-	ctx context.Context,
-	counterparty *Chain,
-	connection, counterpartyConnection *types.TestConnection,
-) error {
-	proof, err := counterparty.QueryConnectionProof(chain, connection.ClientID, counterpartyConnection.ID, nil)
-	if err != nil {
-		return err
-	}
+func (chain *Chain) ConnectionOpenConfirm(ctx context.Context, msg types.MsgConnectionOpenConfirm) error {
 	return chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ConnectionOpenConfirm(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgConnectionOpenConfirm{
-				ConnectionId: connection.ID,
-				ProofAck:     proof.Data,
-				ProofHeight:  proof.Height,
+				ConnectionId: msg.ConnectionID,
+				ProofAck:     msg.ProofAck.Data,
+				ProofHeight:  msg.ProofAck.Height.GetRevisionHeight(),
 			},
 		),
 	)
 }
 
-func (chain *Chain) ChannelOpenInit(
-	ctx context.Context,
-	ch, counterparty types.TestChannel,
-	order channeltypes.Channel_Order,
-	connectionID string,
-) (string, error) {
+func (chain *Chain) ChannelOpenInit(ctx context.Context, msg types.MsgChannelOpenInit) (string, error) {
 	if err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ChannelOpenInit(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgChannelOpenInit{
-				PortId: ch.PortID,
+				PortId: msg.PortID,
 				Channel: ibchandler.ChannelData{
 					State:    uint8(channeltypes.INIT),
-					Ordering: uint8(order),
+					Ordering: uint8(msg.Order),
 					Counterparty: ibchandler.ChannelCounterpartyData{
-						PortId:    counterparty.PortID,
+						PortId:    msg.CounterpartyPortID,
 						ChannelId: "",
 					},
-					ConnectionHops: []string{connectionID},
-					Version:        ch.Version,
+					ConnectionHops: msg.ConnectionHops,
+					Version:        msg.Version,
 				},
 			},
 		),
@@ -517,35 +469,26 @@ func (chain *Chain) ChannelOpenInit(
 	return chain.GetLastGeneratedChannelID(ctx)
 }
 
-func (chain *Chain) ChannelOpenTry(
-	ctx context.Context,
-	counterparty *Chain,
-	ch, counterpartyCh types.TestChannel,
-	order channeltypes.Channel_Order,
-	connectionID string,
-) (string, error) {
-	proof, err := counterparty.QueryChannelProof(chain, ch.ClientID, counterpartyCh, nil)
-	if err != nil {
-		return "", err
-	}
+func (chain *Chain) ChannelOpenTry(ctx context.Context, msg types.MsgChannelOpenTry) (string, error) {
 	if err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ChannelOpenTry(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgChannelOpenTry{
-				PortId: ch.PortID,
+				PortId: msg.PortID,
 				Channel: ibchandler.ChannelData{
 					State:    uint8(channeltypes.TRYOPEN),
-					Ordering: uint8(order),
+					Ordering: uint8(msg.Ordering),
 					Counterparty: ibchandler.ChannelCounterpartyData{
-						PortId:    counterpartyCh.PortID,
-						ChannelId: counterpartyCh.ID,
+						PortId:    msg.CounterpartyPortID,
+						ChannelId: msg.CounterpartyChannelID,
 					},
-					ConnectionHops: []string{connectionID},
-					Version:        ch.Version,
+					ConnectionHops: msg.ConnectionHops,
+					Version:        msg.Version,
 				},
-				CounterpartyVersion: counterpartyCh.Version,
-				ProofInit:           proof.Data,
-				ProofHeight:         proof.Height,
+				CounterpartyVersion: msg.CounterpartyVersion,
+				ProofInit:           msg.ProofInit.Data,
+				ProofHeight:         msg.ProofInit.Height.GetRevisionHeight(),
+				PreviousChannelId:   msg.PreviousChannelID,
 			},
 		),
 	); err != nil {
@@ -554,56 +497,37 @@ func (chain *Chain) ChannelOpenTry(
 	return chain.GetLastGeneratedChannelID(ctx)
 }
 
-func (chain *Chain) ChannelOpenAck(
-	ctx context.Context,
-	counterparty *Chain,
-	ch, counterpartyCh types.TestChannel,
-) error {
-	proof, err := counterparty.QueryChannelProof(chain, ch.ClientID, counterpartyCh, nil)
-	if err != nil {
-		return err
-	}
+func (chain *Chain) ChannelOpenAck(ctx context.Context, msg types.MsgChannelOpenAck) error {
 	return chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ChannelOpenAck(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgChannelOpenAck{
-				PortId:                ch.PortID,
-				ChannelId:             ch.ID,
-				CounterpartyVersion:   counterpartyCh.Version,
-				CounterpartyChannelId: counterpartyCh.ID,
-				ProofTry:              proof.Data,
-				ProofHeight:           proof.Height,
+				PortId:                msg.PortID,
+				ChannelId:             msg.ChannelID,
+				CounterpartyVersion:   msg.CounterpartyVersion,
+				CounterpartyChannelId: msg.CounterpartyChannelID,
+				ProofTry:              msg.ProofTry.Data,
+				ProofHeight:           msg.ProofTry.Height.GetRevisionHeight(),
 			},
 		),
 	)
 }
 
-func (chain *Chain) ChannelOpenConfirm(
-	ctx context.Context,
-	counterparty *Chain,
-	ch, counterpartyCh types.TestChannel,
-) error {
-	proof, err := counterparty.QueryChannelProof(chain, ch.ClientID, counterpartyCh, nil)
-	if err != nil {
-		return err
-	}
+func (chain *Chain) ChannelOpenConfirm(ctx context.Context, msg types.MsgChannelOpenConfirm) error {
 	return chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ChannelOpenConfirm(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgChannelOpenConfirm{
-				PortId:      ch.PortID,
-				ChannelId:   ch.ID,
-				ProofAck:    proof.Data,
-				ProofHeight: proof.Height,
+				PortId:      msg.PortID,
+				ChannelId:   msg.ChannelID,
+				ProofAck:    msg.ProofAck.Data,
+				ProofHeight: msg.ProofAck.Height.GetRevisionHeight(),
 			},
 		),
 	)
 }
 
-func (chain *Chain) SendPacket(
-	ctx context.Context,
-	packet channeltypes.Packet,
-) error {
+func (chain *Chain) SendPacket(ctx context.Context, packet exported.PacketI) error {
 	return chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.SendPacket(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
@@ -614,25 +538,16 @@ func (chain *Chain) SendPacket(
 
 func (chain *Chain) HandlePacketRecv(
 	ctx context.Context,
-	counterparty *Chain,
-	ch, counterpartyCh types.TestChannel,
-	packet channeltypes.Packet,
+	packet exported.PacketI,
+	proof *types.Proof,
 ) error {
-	proof, err := counterparty.QueryProof(chain, ch.ClientID, chain.PacketCommitmentSlot(packet.SourcePort, packet.SourceChannel, packet.Sequence), nil)
-	if err != nil {
-		return err
-	}
-	switch chain.ClientType() {
-	case ibcclient.MockClient:
-		proof.Data = commitPacket(packet)
-	}
 	return chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.RecvPacket(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgPacketRecv{
 				Packet:      packetToCallData(packet),
 				Proof:       proof.Data,
-				ProofHeight: proof.Height,
+				ProofHeight: proof.Height.GetRevisionHeight(),
 			},
 		),
 	)
@@ -640,19 +555,10 @@ func (chain *Chain) HandlePacketRecv(
 
 func (chain *Chain) HandlePacketAcknowledgement(
 	ctx context.Context,
-	counterparty *Chain,
-	ch, counterpartyCh types.TestChannel,
-	packet channeltypes.Packet,
+	packet exported.PacketI,
 	acknowledgement []byte,
+	proof *types.Proof,
 ) error {
-	proof, err := counterparty.QueryProof(chain, ch.ClientID, chain.PacketAcknowledgementCommitmentSlot(packet.DestinationPort, packet.DestinationChannel, packet.Sequence), nil)
-	if err != nil {
-		return err
-	}
-	switch chain.ClientType() {
-	case ibcclient.MockClient:
-		proof.Data = commitAcknowledgement(acknowledgement)
-	}
 	return chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.AcknowledgePacket(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
@@ -660,7 +566,7 @@ func (chain *Chain) HandlePacketAcknowledgement(
 				Packet:          packetToCallData(packet),
 				Acknowledgement: acknowledgement,
 				Proof:           proof.Data,
-				ProofHeight:     proof.Height,
+				ProofHeight:     proof.Height.GetRevisionHeight(),
 			},
 		),
 	)
@@ -694,7 +600,7 @@ func (chain *Chain) getLastID(ctx context.Context, event abi.Event) (string, err
 			event.ID,
 		}},
 	}
-	logs, err := chain.client.FilterLogs(ctx, query)
+	logs, err := chain.chainClient.FilterLogs(ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -713,7 +619,7 @@ func (chain *Chain) GetLastSentPacket(
 	ctx context.Context,
 	sourcePortID string,
 	sourceChannel string,
-) (*channeltypes.Packet, error) {
+) (exported.PacketI, error) {
 	seq, err := chain.IBCHost.GetNextSequenceSend(chain.CallOpts(ctx, types.RelayerKeyIndex), sourcePortID, sourceChannel)
 	if err != nil {
 		return nil, err
@@ -736,7 +642,7 @@ func (chain *Chain) FindPacket(
 			abiSendPacket.ID,
 		}},
 	}
-	logs, err := chain.client.FilterLogs(ctx, query)
+	logs, err := chain.chainClient.FilterLogs(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -776,81 +682,20 @@ func (chain *Chain) FindPacket(
 	return nil, fmt.Errorf("packet not found: sourcePortID=%v sourceChannel=%v sequence=%v", sourcePortID, sourceChannel, sequence)
 }
 
-func packetToCallData(packet channeltypes.Packet) ibchandler.PacketData {
+func packetToCallData(packet exported.PacketI) ibchandler.PacketData {
 	return ibchandler.PacketData{
-		Sequence:           packet.Sequence,
-		SourcePort:         packet.SourcePort,
-		SourceChannel:      packet.SourceChannel,
-		DestinationPort:    packet.DestinationPort,
-		DestinationChannel: packet.DestinationChannel,
-		Data:               packet.Data,
-		TimeoutHeight:      ibchandler.HeightData(packet.TimeoutHeight),
-		TimeoutTimestamp:   packet.TimeoutTimestamp,
-	}
-}
-
-func connectionEndToPB(conn ibchost.ConnectionEndData) *connectiontypes.ConnectionEnd {
-	connpb := &connectiontypes.ConnectionEnd{
-		ClientId:    conn.ClientId,
-		Versions:    []*connectiontypes.Version{},
-		State:       connectiontypes.ConnectionEnd_State(conn.State),
-		DelayPeriod: conn.DelayPeriod,
-		Counterparty: &connectiontypes.Counterparty{
-			ClientId:     conn.Counterparty.ClientId,
-			ConnectionId: conn.Counterparty.ConnectionId,
-			Prefix:       (*connectiontypes.MerklePrefix)(&conn.Counterparty.Prefix),
+		Sequence:           packet.GetSequence(),
+		SourcePort:         packet.GetSourcePort(),
+		SourceChannel:      packet.GetSourceChannel(),
+		DestinationPort:    packet.GetDestPort(),
+		DestinationChannel: packet.GetDestChannel(),
+		Data:               packet.GetData(),
+		TimeoutHeight: ibchandler.HeightData{
+			RevisionNumber: packet.GetTimeoutHeight().GetRevisionNumber(),
+			RevisionHeight: packet.GetTimeoutHeight().GetRevisionHeight(),
 		},
+		TimeoutTimestamp: packet.GetTimeoutTimestamp(),
 	}
-	for _, v := range conn.Versions {
-		ver := connectiontypes.Version(v)
-		connpb.Versions = append(connpb.Versions, &ver)
-	}
-	return connpb
-}
-
-func channelToPB(ch ibchost.ChannelData) *channeltypes.Channel {
-	return &channeltypes.Channel{
-		State:          channeltypes.Channel_State(ch.State),
-		Ordering:       channeltypes.Channel_Order(ch.Ordering),
-		Counterparty:   channeltypes.Channel_Counterparty(ch.Counterparty),
-		ConnectionHops: ch.ConnectionHops,
-		Version:        ch.Version,
-	}
-}
-
-// uint64ToBigEndian - marshals uint64 to a bigendian byte slice so it can be sorted
-func uint64ToBigEndian(i uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, i)
-	return b
-}
-
-// commitPacket returns the packet commitment bytes. The commitment consists of:
-// sha256_hash(timeout_timestamp + timeout_height.RevisionNumber + timeout_height.RevisionHeight + sha256_hash(data))
-// from a given packet. This results in a fixed length preimage.
-// NOTE: uint64ToBigEndian sets the uint64 to a slice of length 8.
-func commitPacket(packet channeltypes.Packet) []byte {
-	timeoutHeight := packet.TimeoutHeight
-
-	buf := uint64ToBigEndian(packet.TimeoutTimestamp)
-
-	revisionNumber := uint64ToBigEndian(timeoutHeight.GetRevisionNumber())
-	buf = append(buf, revisionNumber...)
-
-	revisionHeight := uint64ToBigEndian(timeoutHeight.GetRevisionHeight())
-	buf = append(buf, revisionHeight...)
-
-	dataHash := sha256.Sum256(packet.Data)
-	buf = append(buf, dataHash[:]...)
-
-	hash := sha256.Sum256(buf)
-	return hash[:]
-}
-
-// commitAcknowledgement returns the hash of commitment bytes
-func commitAcknowledgement(data []byte) []byte {
-	hash := sha256.Sum256(data)
-	return hash[:]
 }
 
 func PackAny(msg proto.Message) (*pbtypes.Any, error) {
@@ -894,126 +739,58 @@ func UnmarshalWithAny(bz []byte, msg proto.Message) error {
 
 // Slot calculator
 
-func (chain *Chain) ClientStateCommitmentSlot(clientID string) string {
+func (chain *Chain) ClientStateCommitmentKey(clientID string) []byte {
 	key, err := chain.IBCIdentifier.ClientStateCommitmentSlot(chain.CallOpts(context.Background(), types.RelayerKeyIndex), clientID)
 	require.NoError(chain.t, err)
-	return "0x" + hex.EncodeToString(key[:])
+	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
-func (chain *Chain) ConnectionStateCommitmentSlot(connectionID string) string {
+func (chain *Chain) ConsensusStateCommitmentKey(clientID string, height exported.Height) []byte {
+	key, err := chain.IBCIdentifier.ConsensusStateCommitmentSlot(
+		chain.CallOpts(context.Background(), types.RelayerKeyIndex), clientID, height.GetRevisionHeight(),
+	)
+	require.NoError(chain.t, err)
+	return []byte("0x" + hex.EncodeToString(key[:]))
+}
+
+func (chain *Chain) ConnectionStateCommitmentKey(connectionID string) []byte {
 	key, err := chain.IBCIdentifier.ConnectionCommitmentSlot(chain.CallOpts(context.Background(), types.RelayerKeyIndex), connectionID)
 	require.NoError(chain.t, err)
-	return "0x" + hex.EncodeToString(key[:])
+	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
-func (chain *Chain) ChannelStateCommitmentSlot(portID, channelID string) string {
+func (chain *Chain) ChannelStateCommitmentKey(portID, channelID string) []byte {
 	key, err := chain.IBCIdentifier.ChannelCommitmentSlot(chain.CallOpts(context.Background(), types.RelayerKeyIndex), portID, channelID)
 	require.NoError(chain.t, err)
-	return "0x" + hex.EncodeToString(key[:])
+	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
-func (chain *Chain) PacketCommitmentSlot(portID, channelID string, sequence uint64) string {
+func (chain *Chain) PacketCommitmentKey(portID, channelID string, sequence uint64) []byte {
 	key, err := chain.IBCIdentifier.PacketCommitmentSlot(chain.CallOpts(context.Background(), types.RelayerKeyIndex), portID, channelID, sequence)
 	require.NoError(chain.t, err)
-	return "0x" + hex.EncodeToString(key[:])
+	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
-func (chain *Chain) PacketAcknowledgementCommitmentSlot(portID, channelID string, sequence uint64) string {
+func (chain *Chain) PacketAcknowledgementCommitmentKey(portID, channelID string, sequence uint64) []byte {
 	key, err := chain.IBCIdentifier.PacketAcknowledgementCommitmentSlot(chain.CallOpts(context.Background(), types.RelayerKeyIndex), portID, channelID, sequence)
 	require.NoError(chain.t, err)
-	return "0x" + hex.EncodeToString(key[:])
+	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
 // Querier
-
-type Proof struct {
-	Height uint64
-	Data   []byte
-}
-
-func (chain *Chain) QueryProof(counterparty *Chain, counterpartyClientID string, storageKey string, height *big.Int) (*Proof, error) {
+func (chain *Chain) QueryProofAtHeight(storageKeyBytes []byte, height exported.Height, clientType string) (*types.Proof, error) {
+	storageKey := string(storageKeyBytes)
 	if !strings.HasPrefix(storageKey, "0x") {
 		return nil, fmt.Errorf("storageKey must be hex string")
 	}
-	s, err := chain.GetContractState(counterparty, counterpartyClientID, [][]byte{[]byte(storageKey)}, height)
+	s, err := chain.GetContractState([][]byte{[]byte(storageKey)}, big.NewInt(int64(height.GetRevisionHeight())), clientType)
 	if err != nil {
 		return nil, err
 	}
-	return &Proof{Height: s.Header().Number.Uint64(), Data: s.ETHProof().StorageProofRLP[0]}, nil
-}
-
-func (counterparty *Chain) QueryClientProof(chain *Chain, counterpartyClientID string, height *big.Int) ([]byte, *Proof, error) {
-	cs, found, err := counterparty.IBCHost.GetClientState(
-		counterparty.CallOpts(context.Background(), types.RelayerKeyIndex),
-		counterpartyClientID,
-	)
-	if err != nil {
-		return nil, nil, err
-	} else if !found {
-		return nil, nil, fmt.Errorf("client not found: %v", counterpartyClientID)
-	}
-	proof, err := counterparty.QueryProof(chain, counterpartyClientID, chain.ClientStateCommitmentSlot(counterpartyClientID), height)
-	if err != nil {
-		return nil, nil, err
-	}
-	switch counterparty.ClientType() {
-	case ibcclient.MockClient:
-		h := sha256.Sum256(cs)
-		proof.Data = h[:]
-	}
-	return cs, proof, nil
-}
-
-func (counterparty *Chain) QueryConnectionProof(chain *Chain, counterpartyClientID string, counterpartyConnectionID string, height *big.Int) (*Proof, error) {
-	proof, err := counterparty.QueryProof(chain, counterpartyClientID, chain.ConnectionStateCommitmentSlot(counterpartyConnectionID), height)
-	if err != nil {
-		return nil, err
-	}
-	switch counterparty.ClientType() {
-	case ibcclient.MockClient:
-		conn, found, err := counterparty.IBCHost.GetConnection(
-			counterparty.CallOpts(context.Background(), types.RelayerKeyIndex),
-			counterpartyConnectionID,
-		)
-		if err != nil {
-			return nil, err
-		} else if !found {
-			return nil, fmt.Errorf("connection not found: %v", counterpartyConnectionID)
-		}
-		bz, err := proto.Marshal(connectionEndToPB(conn))
-		if err != nil {
-			return nil, err
-		}
-		h := sha256.Sum256(bz)
-		proof.Data = h[:]
-	}
-	return proof, nil
-}
-
-func (counterparty *Chain) QueryChannelProof(chain *Chain, counterpartyClientID string, channel types.TestChannel, height *big.Int) (*Proof, error) {
-	proof, err := counterparty.QueryProof(chain, counterpartyClientID, chain.ChannelStateCommitmentSlot(channel.PortID, channel.ID), height)
-	if err != nil {
-		return nil, err
-	}
-	switch counterparty.ClientType() {
-	case ibcclient.MockClient:
-		ch, found, err := counterparty.IBCHost.GetChannel(
-			counterparty.CallOpts(context.Background(), types.RelayerKeyIndex),
-			channel.PortID, channel.ID,
-		)
-		if err != nil {
-			return nil, err
-		} else if !found {
-			return nil, fmt.Errorf("channel not found: %v", channel)
-		}
-		bz, err := proto.Marshal(channelToPB(ch))
-		if err != nil {
-			return nil, err
-		}
-		h := sha256.Sum256(bz)
-		proof.Data = h[:]
-	}
-	return proof, nil
+	return &types.Proof{
+		Height: height,
+		Data:   s.ETHProof().StorageProofRLP[0],
+	}, nil
 }
 
 func (chain *Chain) LastHeader() *gethtypes.Header {
@@ -1044,46 +821,110 @@ func (chain *Chain) WaitIfNoError(ctx context.Context) func(tx *gethtypes.Transa
 	}
 }
 
-// AddTestConnection appends a new TestConnection which contains references
-// to the connection id, client id and counterparty client id.
-func (chain *Chain) AddTestConnection(clientID, counterpartyClientID string) *types.TestConnection {
-	conn := chain.ConstructNextTestConnection(clientID, counterpartyClientID)
+func (chain *Chain) MockConnectionProof(connectionID string, proof *types.Proof) (*types.Proof, error) {
+	conn, found, err := chain.GetConnection(connectionID)
+	if err != nil {
+		return nil, err
+	} else if !found {
+		return nil, fmt.Errorf("connection not found: %v", connectionID)
+	}
+	bz, err := proto.Marshal(connectionEndToPB(conn))
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.Sum256(bz)
+	proof.Data = h[:]
 
-	chain.Connections = append(chain.Connections, conn)
-	return conn
+	return proof, nil
 }
 
-// ConstructNextTestConnection constructs the next test connection to be
-// created given a clientID and counterparty clientID.
-func (chain *Chain) ConstructNextTestConnection(clientID, counterpartyClientID string) *types.TestConnection {
-	return &types.TestConnection{
-		ID:                   "",
-		ClientID:             clientID,
-		NextChannelVersion:   types.DefaultChannelVersion,
-		CounterpartyClientID: counterpartyClientID,
+func (chain *Chain) MockChannelProof(portID string, channelID string, proof *types.Proof) (*types.Proof, error) {
+	ch, found, err := chain.GetChannel(portID, channelID)
+	if err != nil {
+		return nil, err
+	} else if !found {
+		return nil, fmt.Errorf("channel not found: %v:%v", portID, channelID)
+	}
+	bz, err := proto.Marshal(channelToPB(ch))
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.Sum256(bz)
+	proof.Data = h[:]
+
+	return proof, nil
+}
+
+func (chain *Chain) MockPacketProof(packet exported.PacketI, proof *types.Proof) (*types.Proof, error) {
+	proof.Data = commitPacket(packet)
+	return proof, nil
+}
+
+func (chain *Chain) MockAcknowledgementProof(ack []byte, proof *types.Proof) (*types.Proof, error) {
+	proof.Data = commitAcknowledgement(ack)
+	return proof, nil
+}
+
+func connectionEndToPB(conn ibchost.ConnectionEndData) *connectiontypes.ConnectionEnd {
+	connpb := &connectiontypes.ConnectionEnd{
+		ClientId:    conn.ClientId,
+		Versions:    []*connectiontypes.Version{},
+		State:       connectiontypes.ConnectionEnd_State(conn.State),
+		DelayPeriod: conn.DelayPeriod,
+		Counterparty: &connectiontypes.Counterparty{
+			ClientId:     conn.Counterparty.ClientId,
+			ConnectionId: conn.Counterparty.ConnectionId,
+			Prefix:       (*connectiontypes.MerklePrefix)(&conn.Counterparty.Prefix),
+		},
+	}
+	for _, v := range conn.Versions {
+		ver := connectiontypes.Version(v)
+		connpb.Versions = append(connpb.Versions, &ver)
+	}
+	return connpb
+}
+
+func channelToPB(ch ibchost.ChannelData) *channeltypes.Channel {
+	return &channeltypes.Channel{
+		State:          channeltypes.Channel_State(ch.State),
+		Ordering:       channeltypes.Channel_Order(ch.Ordering),
+		Counterparty:   channeltypes.Channel_Counterparty(ch.Counterparty),
+		ConnectionHops: ch.ConnectionHops,
+		Version:        ch.Version,
 	}
 }
 
-// AddTestChannel appends a new types.TestChannel which contains references to the port and channel ID
-// used for channel creation and interaction. See 'NextTestChannel' for channel ID naming format.
-func (chain *Chain) AddTestChannel(conn *types.TestConnection, portID string) types.TestChannel {
-	channel := chain.NextTestChannel(conn, portID)
-	conn.Channels = append(conn.Channels, channel)
-	return channel
+// uint64ToBigEndian - marshals uint64 to a bigendian byte slice so it can be sorted
+func uint64ToBigEndian(i uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, i)
+	return b
 }
 
-// NextTestChannel returns the next test channel to be created on this connection, but does not
-// add it to the list of created channels. This function is expected to be used when the caller
-// has not created the associated channel in app state, but would still like to refer to the
-// non-existent channel usually to test for its non-existence.
-//
-// The port is passed in by the caller.
-func (chain *Chain) NextTestChannel(conn *types.TestConnection, portID string) types.TestChannel {
-	return types.TestChannel{
-		PortID:               portID,
-		ID:                   "",
-		ClientID:             conn.ClientID,
-		CounterpartyClientID: conn.CounterpartyClientID,
-		Version:              conn.NextChannelVersion,
-	}
+// commitPacket returns the packet commitment bytes. The commitment consists of:
+// sha256_hash(timeout_timestamp + timeout_height.RevisionNumber + timeout_height.RevisionHeight + sha256_hash(data))
+// from a given packet. This results in a fixed length preimage.
+// NOTE: uint64ToBigEndian sets the uint64 to a slice of length 8.
+func commitPacket(packet exported.PacketI) []byte {
+	timeoutHeight := packet.GetTimeoutHeight()
+
+	buf := uint64ToBigEndian(packet.GetTimeoutTimestamp())
+
+	revisionNumber := uint64ToBigEndian(timeoutHeight.GetRevisionNumber())
+	buf = append(buf, revisionNumber...)
+
+	revisionHeight := uint64ToBigEndian(timeoutHeight.GetRevisionHeight())
+	buf = append(buf, revisionHeight...)
+
+	dataHash := sha256.Sum256(packet.GetData())
+	buf = append(buf, dataHash[:]...)
+
+	hash := sha256.Sum256(buf)
+	return hash[:]
+}
+
+// commitAcknowledgement returns the hash of commitment bytes
+func commitAcknowledgement(data []byte) []byte {
+	hash := sha256.Sum256(data)
+	return hash[:]
 }

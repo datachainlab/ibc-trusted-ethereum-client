@@ -14,7 +14,7 @@ type ETHProof struct {
 	StorageProofRLP [][]byte
 }
 
-func (cl Client) GetETHProof(address common.Address, storageKeys [][]byte, blockNumber *big.Int) (*ETHProof, error) {
+func (cl ChainClient) GetETHProof(address common.Address, storageKeys [][]byte, blockNumber *big.Int) (*ETHProof, error) {
 	bz, err := cl.getProof(address, storageKeys, "0x"+blockNumber.Text(16))
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func (cl Client) GetETHProof(address common.Address, storageKeys [][]byte, block
 	return &encodedProof, nil
 }
 
-func (cl Client) getProof(address common.Address, storageKeys [][]byte, blockNumber string) ([]byte, error) {
+func (cl ChainClient) getProof(address common.Address, storageKeys [][]byte, blockNumber string) ([]byte, error) {
 	hashes := []common.Hash{}
 	for _, k := range storageKeys {
 		var h common.Hash

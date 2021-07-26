@@ -15,19 +15,14 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-type Client struct {
-	endpoint   string
-	clientType string
+type ChainClient struct {
+	endpoint string
 
 	conn *rpc.Client
 	ETHClient
 }
 
-func (cl Client) ClientType() string {
-	return cl.clientType
-}
-
-func (cl Client) WaitForReceiptAndGet(ctx context.Context, tx *gethtypes.Transaction) (Receipt, error) {
+func (cl ChainClient) WaitForReceiptAndGet(ctx context.Context, tx *gethtypes.Transaction) (Receipt, error) {
 	var receipt Receipt
 	err := retry.Do(
 		func() error {
