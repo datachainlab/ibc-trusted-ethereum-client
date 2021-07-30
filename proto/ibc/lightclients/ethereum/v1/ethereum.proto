@@ -1,0 +1,66 @@
+syntax = "proto3";
+// TODO
+// Since other client designs are being considered, it may be necessary to use a
+// name here that distinguishes them.
+package ibc.lightclients.ethereum.v1;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+import "ibc/core/client/v1/client.proto";
+import "ibc/core/commitment/v1/commitment.proto";
+
+option go_package = "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/xx-ethereum/types";
+option (gogoproto.goproto_getters_all)  = false;
+
+message ClientState {
+  string chain_id          = 1;
+  bytes  ibc_store_address = 2;
+
+  // Latest height the client was updated to
+  ibc.core.client.v1.Height latest_height = 3
+      [(gogoproto.nullable) = false, (gogoproto.moretags) = "yaml:\"latest_height\""];
+
+  // Block height when the client was frozen due to a misbehaviour
+  ibc.core.client.v1.Height frozen_height = 4
+      [(gogoproto.nullable) = false, (gogoproto.moretags) = "yaml:\"frozen_height\""];
+}
+
+message ConsensusState {
+  // timestamp that corresponds to the block height in which the ConsensusState
+  // was stored.
+  uint64 timestamp = 1;
+
+  // commitment root (i.e app hash)
+  ibc.core.commitment.v1.MerkleRoot root = 2 [(gogoproto.nullable) = false];
+
+  // public key of the trusted submitter
+  google.protobuf.Any public_key = 3 [(gogoproto.moretags) = "yaml:\"public_key\""];
+
+  // diversifier allows the same public key to be re-used across different
+  // clients (potentially on different chains) without being considered
+  // misbehaviour.
+  string diversifier = 4;
+}
+
+// Header defines a multisig consensus header
+message Header {
+  // height to update multisig public key at
+  ibc.core.client.v1.Height height = 1 [(gogoproto.nullable) = false];
+
+  bytes               parent_hash     = 2;
+  bytes               state_root      = 3;
+  uint64              timestamp       = 4;
+  bytes               account_proof   = 5;
+  bytes               signature       = 6;
+  google.protobuf.Any new_public_key  = 7 [(gogoproto.moretags) = "yaml:\"new_public_key\""];
+  string              new_diversifier = 8 [(gogoproto.moretags) = "yaml:\"new_diversifier\""];
+}
+
+// Misbehaviour defines misbehaviour for a multisig which consists
+// of a sequence and two signatures over different messages at that sequence.
+message Misbehaviour {
+  string client_id = 1 [(gogoproto.moretags) = "yaml:\"client_id\""];
+  Header header_1  = 2 [(gogoproto.customname) = "Header1", (gogoproto.moretags) = "yaml:\"header_1\""];
+  Header header_2  = 3 [(gogoproto.customname) = "Header2", (gogoproto.moretags) = "yaml:\"header_2\""];
+}
