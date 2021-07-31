@@ -17,12 +17,11 @@ type TestChainI interface {
 	GetCommitmentPrefix() []byte
 	GetSenderAddress() string
 
+	BeginBlock()
 	NextBlock()
 
 	GetClientState(counterpartyClientID string) ([]byte, bool, error)
 	GetLatestHeight(counterpartyClientID string, clientType string) exported.Height
-
-	UpdateHeader(clientType string)
 
 	ConstructMockMsgCreateClient() MsgCreateClient
 	CreateClient(ctx context.Context, msg MsgCreateClient) (string, error)

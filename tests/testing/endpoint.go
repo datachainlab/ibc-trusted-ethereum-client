@@ -61,7 +61,7 @@ func NewDefaultEndpoint(chain *ethereum.Chain) *Endpoint {
 // NOTE: a solo machine client will be created with an empty diversifier.
 func (endpoint *Endpoint) CreateClient(ctx context.Context) (err error) {
 	// ensure counterparty has committed state
-	//endpoint.Chain.Coordinator.CommitBlock(endpoint.Counterparty.Chain)
+	endpoint.Counterparty.Chain.NextBlock()
 
 	var (
 		msg ibctestingtypes.MsgCreateClient
@@ -90,9 +90,7 @@ func (endpoint *Endpoint) CreateClient(ctx context.Context) (err error) {
 // UpdateClient updates the IBC client associated with the endpoint.
 func (endpoint *Endpoint) UpdateClient(ctx context.Context) (err error) {
 	// ensure counterparty has committed state
-	//endpoint.Chain.Coordinator.CommitBlock(endpoint.Counterparty.Chain)
-
-	endpoint.Counterparty.Chain.UpdateHeader(endpoint.Counterparty.ClientConfig.GetClientType()) // FIXME
+	endpoint.Counterparty.Chain.NextBlock()
 	var (
 		msg ibctestingtypes.MsgUpdateClient
 	)

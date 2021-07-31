@@ -6,30 +6,40 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum"
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
 type Coordinator struct {
-	t      *testing.T
-	chains []*ethereum.Chain
+	t *testing.T
+
+	Chains []types.TestChainI
 }
 
-func NewCoordinator(t *testing.T, chains ...*ethereum.Chain) Coordinator {
+func NewCoordinator(t *testing.T, chains ...types.TestChainI) Coordinator {
 	for _, chain := range chains {
 		if err := chain.Init(); err != nil {
 			panic(err)
 		}
 	}
-	return Coordinator{t: t, chains: chains}
+	return Coordinator{t: t, Chains: chains}
 }
 
-func (c Coordinator) GetChain(idx int) *ethereum.Chain {
-	return c.chains[idx]
+func (c Coordinator) GetChain(idx int) types.TestChainI {
+	return c.Chains[idx]
 }
 
-// Setup constructs a TM client, connection, and channel on both chains provided. It will
+// CommitBlock commits a block on the provided indexes and then increments the global time.
+//
+// CONTRACT: the passed in list of indexes must not contain duplicates
+func (coord *Coordinator) CommitBlock(chains ...types.TestChainI) {
+	for _, chain := range chains {
+		chain.NextBlock()
+	}
+}
+
+// Setup constructs a TM client, connection, and channel on both Chains provided. It will
 // fail if any error occurs. The clientID's, TestConnections, and TestChannels are returned
-// for both chains. The channels created are connected to the ibc-transfer application.
+// for both Chains. The channels created are connected to the ibc-transfer application.
 func (coord *Coordinator) Setup(ctx context.Context, path *Path) {
 	coord.SetupConnections(ctx, path)
 
@@ -41,12 +51,11 @@ func (coord *Coordinator) Setup(ctx context.Context, path *Path) {
 // connections on both the source and counterparty chain. It assumes the caller does not
 // anticipate any errors.
 func (coord *Coordinator) SetupConnections(ctx context.Context, path *Path) {
-	coord.UpdateHeaders(path)
 	coord.SetupClients(ctx, path)
 	coord.CreateConnections(ctx, path)
 }
 
-// SetupClients is a helper function to create clients on both chains. It assumes the
+// SetupClients is a helper function to create clients on both Chains. It assumes the
 // caller does not anticipate any errors.
 func (coord *Coordinator) SetupClients(ctx context.Context, path *Path) {
 	err := path.EndpointA.CreateClient(ctx)
@@ -90,9 +99,4 @@ func (coord *Coordinator) CreateChannels(ctx context.Context, path *Path) {
 
 	err = path.EndpointB.ChanOpenConfirm(ctx)
 	require.NoError(coord.t, err)
-}
-
-func (coord *Coordinator) UpdateHeaders(path *Path) {
-	path.EndpointA.Chain.UpdateHeader(path.EndpointA.ClientConfig.GetClientType())
-	path.EndpointB.Chain.UpdateHeader(path.EndpointB.ClientConfig.GetClientType())
 }

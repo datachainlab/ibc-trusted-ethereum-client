@@ -4,7 +4,7 @@ import (
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum"
 )
 
-// Path contains two endpoints representing two chains connected over IBC
+// Path contains two endpoints representing two Chains connected over IBC
 type Path struct {
 	EndpointA *Endpoint
 	EndpointB *Endpoint

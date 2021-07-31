@@ -60,13 +60,13 @@ func (suite *ContractTestSuite) TestChannel() {
 	path := NewTransferPath(suite.chainA, suite.chainB)
 	suite.coordinator.Setup(ctx, path)
 
+	/// Tests for Transfer module ///
 	chainA, ok := path.EndpointA.Chain.(*ethereum.Chain)
 	suite.Require().True(ok)
 
 	chainB, ok := path.EndpointB.Chain.(*ethereum.Chain)
 	suite.Require().True(ok)
 
-	/////// Tests for Transfer module ///
 	balance0, err := chainA.SimpleToken.BalanceOf(
 		chainA.CallOpts(ctx, relayer),
 		chainA.CallOpts(ctx, deployer).From,
@@ -114,7 +114,7 @@ func (suite *ContractTestSuite) TestChannel() {
 			100,
 			chainB.CallOpts(ctx, bob).From,
 			path.EndpointA.ChannelConfig.PortID, path.EndpointA.ChannelID,
-			uint64(chainA.LastHeader().Number.Int64())+1000,
+			uint64(chainA.LastHeader(path.EndpointA.ClientConfig.GetClientType()).Number.Int64())+1000,
 		),
 	))
 
@@ -156,7 +156,7 @@ func (suite *ContractTestSuite) TestChannel() {
 			chainA.CallOpts(ctx, alice).From,
 			path.EndpointB.ChannelConfig.PortID,
 			path.EndpointB.ChannelID,
-			uint64(chainB.LastHeader().Number.Int64())+1000,
+			uint64(chainB.LastHeader(path.EndpointB.ClientConfig.GetClientType()).Number.Int64())+1000,
 		),
 	))
 

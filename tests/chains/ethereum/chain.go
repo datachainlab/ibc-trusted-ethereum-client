@@ -87,7 +87,7 @@ type Chain struct {
 	keys           map[uint32]*ecdsa.PrivateKey
 
 	// State
-	LastContractState client.ContractState
+	LastContractState map[string]client.ContractState
 }
 
 type ContractConfig interface {
@@ -129,12 +129,13 @@ func NewChain(t *testing.T, chainID int64, chainClient client.ChainClient, confi
 	}
 
 	return &Chain{
-		t:              t,
-		chainClient:    chainClient,
-		chainID:        chainID,
-		ContractConfig: config,
-		mnemonicPhrase: mnemonicPhrase,
-		keys:           make(map[uint32]*ecdsa.PrivateKey),
+		t:                 t,
+		chainClient:       chainClient,
+		chainID:           chainID,
+		ContractConfig:    config,
+		mnemonicPhrase:    mnemonicPhrase,
+		keys:              make(map[uint32]*ecdsa.PrivateKey),
+		LastContractState: make(map[string]client.ContractState),
 
 		IBCHost:       *ibcHost,
 		IBCHandler:    *ibcHandler,
@@ -198,8 +199,13 @@ func (chain *Chain) GetSenderAddress() string {
 	return ""
 }
 
-func (chain *Chain) NextBlock() {
+func (chain *Chain) BeginBlock() {}
 
+func (chain *Chain) NextBlock() {
+	_, _ = chain.chainClient.MineBlock(time.Now())
+	for _, clientType := range []string{ibcclient.MockClient} {
+		chain.updateHeader(clientType)
+	}
 }
 
 func (chain *Chain) GetClientState(clientID string) ([]byte, bool, error) {
@@ -224,7 +230,7 @@ func (chain *Chain) GetLatestHeight(clientID string, clientType string) (height 
 	}
 }
 
-func (chain *Chain) UpdateHeader(clientType string) {
+func (chain *Chain) updateHeader(clientType string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	for {
@@ -238,13 +244,17 @@ func (chain *Chain) UpdateHeader(clientType string) {
 		if err != nil {
 			panic(err)
 		}
-		if chain.LastContractState == nil || state.Header().Number.Cmp(chain.LastHeader().Number) == 1 {
-			chain.LastContractState = state
+		if chain.LastContractState[clientType] == nil || state.Header().Number.Cmp(chain.LastHeader(clientType).Number) == 1 {
+			chain.LastContractState[clientType] = state
 			return
 		} else {
 			continue
 		}
 	}
+}
+
+func (chain *Chain) LastHeader(clientType string) *gethtypes.Header {
+	return chain.LastContractState[clientType].Header()
 }
 
 func (chain *Chain) GetConnection(connectionID string) (ibchost.ConnectionEndData, bool, error) {
@@ -291,11 +301,13 @@ func (chain *Chain) GetContractState(
 }
 
 func (chain *Chain) ConstructMockMsgCreateClient() types.MsgCreateClient {
+	clientType := ibcclient.MockClient
+
 	clientState := mockclienttypes.ClientState{
-		LatestHeight: chain.LastHeader().Number.Uint64(),
+		LatestHeight: chain.LastHeader(clientType).Number.Uint64(),
 	}
 	consensusState := mockclienttypes.ConsensusState{
-		Timestamp: chain.LastHeader().Time,
+		Timestamp: chain.LastHeader(clientType).Time,
 	}
 	clientStateBytes, err := MarshalWithAny(&clientState)
 	if err != nil {
@@ -306,7 +318,7 @@ func (chain *Chain) ConstructMockMsgCreateClient() types.MsgCreateClient {
 		panic(err)
 	}
 	return types.MsgCreateClient{
-		ClientType:          ibcclient.MockClient,
+		ClientType:          clientType,
 		Height:              clienttypes.NewHeight(0, clientState.LatestHeight),
 		ClientStateBytes:    clientStateBytes,
 		ConsensusStateBytes: consensusStateBytes,
@@ -330,7 +342,7 @@ func (chain *Chain) CreateClient(ctx context.Context, msg types.MsgCreateClient)
 }
 
 func (chain *Chain) ConstructMockMsgUpdateClient(clientID string) types.MsgUpdateClient {
-	cs := chain.LastContractState.(client.ETHContractState)
+	cs := chain.LastContractState[ibcclient.MockClient].(client.ETHContractState)
 	header := mockclienttypes.Header{
 		Height:    cs.Header().Number.Uint64(),
 		Timestamp: cs.Header().Time,
@@ -373,6 +385,7 @@ func (chain *Chain) ConnectionOpenInit(ctx context.Context, msg types.MsgConnect
 	); err != nil {
 		return "", err
 	}
+
 	return chain.GetLastGeneratedConnectionID(ctx)
 }
 
@@ -394,23 +407,23 @@ func (chain *Chain) ConnectionOpenTry(ctx context.Context, msg types.MsgConnecti
 					Identifier: msg.Versions[0].GetIdentifier(),
 					Features:   msg.Versions[0].GetFeatures(),
 				}},
-				ProofInit:   msg.ProofInit.Data,
-				ProofHeight: msg.ProofInit.Height.GetRevisionHeight(),
-				ProofClient: msg.ProofClient.Data,
-				// TODO
-				//ProofConsensus:  msg.ProofConsensus.Data,
-				//ConsensusHeight: msg.ProofConsensus.Height.RevisionHeight,
+				ProofInit:       msg.ProofInit.Data,
+				ProofHeight:     msg.ProofInit.Height.GetRevisionHeight(),
+				ProofClient:     msg.ProofClient.Data,
+				ProofConsensus:  msg.ProofConsensus.Data,
+				ConsensusHeight: msg.ProofConsensus.Height.GetRevisionHeight(),
 			},
 		),
 	); err != nil {
 		return "", err
 	}
+
 	return chain.GetLastGeneratedConnectionID(ctx)
 }
 
 // ConnectionOpenAck will construct and execute a MsgConnectionOpenAck.
 func (chain *Chain) ConnectionOpenAck(ctx context.Context, msg types.MsgConnectionOpenAck) error {
-	return chain.WaitIfNoError(ctx)(
+	err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ConnectionOpenAck(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgConnectionOpenAck{
@@ -421,19 +434,20 @@ func (chain *Chain) ConnectionOpenAck(ctx context.Context, msg types.MsgConnecti
 					Identifier: msg.Version.GetIdentifier(),
 					Features:   msg.Version.GetFeatures(),
 				},
-				ProofHeight: msg.ProofClient.Height.GetRevisionHeight(),
-				ProofTry:    msg.ProofTry.Data,
-				ProofClient: msg.ProofClient.Data,
-				// TODO
-				//ProofConsensus:  msg.ProofConsensus.Data,
-				//ConsensusHeight: msg.ProofConsensus.Height.GetRevisionHeight(),
+				ProofHeight:     msg.ProofClient.Height.GetRevisionHeight(),
+				ProofTry:        msg.ProofTry.Data,
+				ProofClient:     msg.ProofClient.Data,
+				ProofConsensus:  msg.ProofConsensus.Data,
+				ConsensusHeight: msg.ProofConsensus.Height.GetRevisionHeight(),
 			},
 		),
 	)
+
+	return err
 }
 
 func (chain *Chain) ConnectionOpenConfirm(ctx context.Context, msg types.MsgConnectionOpenConfirm) error {
-	return chain.WaitIfNoError(ctx)(
+	err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ConnectionOpenConfirm(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgConnectionOpenConfirm{
@@ -443,6 +457,8 @@ func (chain *Chain) ConnectionOpenConfirm(ctx context.Context, msg types.MsgConn
 			},
 		),
 	)
+
+	return err
 }
 
 func (chain *Chain) ChannelOpenInit(ctx context.Context, msg types.MsgChannelOpenInit) (string, error) {
@@ -466,6 +482,7 @@ func (chain *Chain) ChannelOpenInit(ctx context.Context, msg types.MsgChannelOpe
 	); err != nil {
 		return "", err
 	}
+
 	return chain.GetLastGeneratedChannelID(ctx)
 }
 
@@ -494,11 +511,12 @@ func (chain *Chain) ChannelOpenTry(ctx context.Context, msg types.MsgChannelOpen
 	); err != nil {
 		return "", err
 	}
+
 	return chain.GetLastGeneratedChannelID(ctx)
 }
 
 func (chain *Chain) ChannelOpenAck(ctx context.Context, msg types.MsgChannelOpenAck) error {
-	return chain.WaitIfNoError(ctx)(
+	err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ChannelOpenAck(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgChannelOpenAck{
@@ -511,10 +529,12 @@ func (chain *Chain) ChannelOpenAck(ctx context.Context, msg types.MsgChannelOpen
 			},
 		),
 	)
+
+	return err
 }
 
 func (chain *Chain) ChannelOpenConfirm(ctx context.Context, msg types.MsgChannelOpenConfirm) error {
-	return chain.WaitIfNoError(ctx)(
+	err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.ChannelOpenConfirm(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgChannelOpenConfirm{
@@ -525,15 +545,19 @@ func (chain *Chain) ChannelOpenConfirm(ctx context.Context, msg types.MsgChannel
 			},
 		),
 	)
+
+	return err
 }
 
 func (chain *Chain) SendPacket(ctx context.Context, packet exported.PacketI) error {
-	return chain.WaitIfNoError(ctx)(
+	err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.SendPacket(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			packetToCallData(packet),
 		),
 	)
+
+	return err
 }
 
 func (chain *Chain) HandlePacketRecv(
@@ -541,7 +565,7 @@ func (chain *Chain) HandlePacketRecv(
 	packet exported.PacketI,
 	proof *types.Proof,
 ) error {
-	return chain.WaitIfNoError(ctx)(
+	err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.RecvPacket(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgPacketRecv{
@@ -551,6 +575,8 @@ func (chain *Chain) HandlePacketRecv(
 			},
 		),
 	)
+
+	return err
 }
 
 func (chain *Chain) HandlePacketAcknowledgement(
@@ -559,7 +585,7 @@ func (chain *Chain) HandlePacketAcknowledgement(
 	acknowledgement []byte,
 	proof *types.Proof,
 ) error {
-	return chain.WaitIfNoError(ctx)(
+	err := chain.WaitIfNoError(ctx)(
 		chain.IBCHandler.AcknowledgePacket(
 			chain.TxOpts(ctx, types.RelayerKeyIndex),
 			ibchandler.IBCMsgsMsgPacketAcknowledgement{
@@ -570,6 +596,8 @@ func (chain *Chain) HandlePacketAcknowledgement(
 			},
 		),
 	)
+
+	return err
 }
 
 func (chain *Chain) GetLastGeneratedClientID(
@@ -791,10 +819,6 @@ func (chain *Chain) QueryProofAtHeight(storageKeyBytes []byte, height exported.H
 		Height: height,
 		Data:   s.ETHProof().StorageProofRLP[0],
 	}, nil
-}
-
-func (chain *Chain) LastHeader() *gethtypes.Header {
-	return chain.LastContractState.Header()
 }
 
 func (chain *Chain) WaitForReceiptAndGet(ctx context.Context, tx *gethtypes.Transaction) error {
