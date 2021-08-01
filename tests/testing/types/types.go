@@ -43,6 +43,7 @@ type MsgConnectionOpenTry struct {
 	ProofInit                *Proof
 	ProofClient              *Proof
 	ProofConsensus           *Proof
+	ConsensusHeight          exported.Height
 	Signer                   string
 }
 
@@ -54,6 +55,7 @@ type MsgConnectionOpenAck struct {
 	ProofTry                 *Proof
 	ProofClient              *Proof
 	ProofConsensus           *Proof
+	ConsensusHeight          exported.Height
 	Signer                   string
 }
 

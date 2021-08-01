@@ -10,15 +10,16 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-func NewETHClient(endpoint string) (*ChainClient, error) {
+func NewETHClient(endpoint string, ethChainID int64) (*ChainClient, error) {
 	conn, err := rpc.DialHTTP(endpoint)
 	if err != nil {
 		return nil, err
 	}
 	return &ChainClient{
-		endpoint:  endpoint,
-		conn:      conn,
-		ETHClient: ethClient{Client: ethclient.NewClient(conn)},
+		endpoint:   endpoint,
+		conn:       conn,
+		EthChainID: ethChainID,
+		ETHClient:  ethClient{Client: ethclient.NewClient(conn)},
 	}, nil
 }
 

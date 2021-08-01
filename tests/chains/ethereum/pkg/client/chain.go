@@ -16,10 +16,11 @@ import (
 )
 
 type ChainClient struct {
-	endpoint string
-
-	conn *rpc.Client
 	ETHClient
+
+	endpoint   string
+	conn       *rpc.Client
+	EthChainID int64
 }
 
 func (cl ChainClient) WaitForReceiptAndGet(ctx context.Context, tx *gethtypes.Transaction) (Receipt, error) {

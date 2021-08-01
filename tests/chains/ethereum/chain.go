@@ -15,6 +15,7 @@ import (
 
 	clienttypes "github.com/cosmos/ibc-go/modules/core/02-client/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
+	ibctmtypes "github.com/cosmos/ibc-go/modules/light-clients/07-tendermint/types"
 	"github.com/gogo/protobuf/proto"
 	pbtypes "github.com/gogo/protobuf/types"
 
@@ -79,7 +80,7 @@ type Chain struct {
 	ICS20Transfer ics20transferbank.Ics20transferbank
 	ICS20Bank     ics20bank.Ics20bank
 
-	chainID int64
+	chainID string
 
 	ContractConfig ContractConfig
 
@@ -102,7 +103,7 @@ type ContractConfig interface {
 	GetICS20BankAddress() common.Address
 }
 
-func NewChain(t *testing.T, chainID int64, chainClient client.ChainClient, config ContractConfig, mnemonicPhrase string, ibcID uint64) *Chain {
+func NewChain(t *testing.T, chainClient client.ChainClient, config ContractConfig, mnemonicPhrase string) *Chain {
 	ibcHost, err := ibchost.NewIbchost(config.GetIBCHostAddress(), chainClient)
 	if err != nil {
 		t.Error(err)
@@ -131,7 +132,6 @@ func NewChain(t *testing.T, chainID int64, chainClient client.ChainClient, confi
 	return &Chain{
 		t:                 t,
 		chainClient:       chainClient,
-		chainID:           chainID,
 		ContractConfig:    config,
 		mnemonicPhrase:    mnemonicPhrase,
 		keys:              make(map[uint32]*ecdsa.PrivateKey),
@@ -150,7 +150,8 @@ func (chain *Chain) T() *testing.T {
 	return chain.t
 }
 
-func (chain *Chain) Init() error {
+func (chain *Chain) Init(chainID string) error {
+	chain.chainID = chainID
 	return nil
 }
 
@@ -159,7 +160,7 @@ func (chain *Chain) Client() client.ChainClient {
 }
 
 func (chain *Chain) TxOpts(ctx context.Context, index uint32) *bind.TransactOpts {
-	return client.MakeGenTxOpts(big.NewInt(chain.chainID), chain.prvKey(index))(ctx)
+	return client.MakeGenTxOpts(big.NewInt(chain.chainClient.EthChainID), chain.prvKey(index))(ctx)
 }
 
 func (chain *Chain) CallOpts(ctx context.Context, index uint32) *bind.CallOpts {
@@ -183,12 +184,8 @@ func (chain *Chain) prvKey(index uint32) *ecdsa.PrivateKey {
 	return key
 }
 
-func (chain *Chain) ChainID() int64 {
+func (chain *Chain) ChainID() string {
 	return chain.chainID
-}
-
-func (chain *Chain) ChainIDString() string {
-	return fmt.Sprint(chain.chainID)
 }
 
 func (chain *Chain) GetCommitmentPrefix() []byte {
@@ -199,10 +196,8 @@ func (chain *Chain) GetSenderAddress() string {
 	return ""
 }
 
-func (chain *Chain) BeginBlock() {}
-
 func (chain *Chain) NextBlock() {
-	_, _ = chain.chainClient.MineBlock(time.Now())
+	_, _ = chain.chainClient.MineBlock(time.Now().UTC())
 	for _, clientType := range []string{ibcclient.MockClient} {
 		chain.updateHeader(clientType)
 	}
@@ -300,6 +295,10 @@ func (chain *Chain) GetContractState(
 	)
 }
 
+func (chain *Chain) ConstructTendermintMsgCreateClient(trustLevel ibctmtypes.Fraction, trustingPeriod, unbondingPeriod, maxClockDrift time.Duration, upgradePath []string, allowUpdateAfterExpiry, allowUpdateAfterMisbehaviour bool) types.MsgCreateClient {
+	panic("implement me")
+}
+
 func (chain *Chain) ConstructMockMsgCreateClient() types.MsgCreateClient {
 	clientType := ibcclient.MockClient
 
@@ -339,6 +338,10 @@ func (chain *Chain) CreateClient(ctx context.Context, msg types.MsgCreateClient)
 		return "", err
 	}
 	return chain.GetLastGeneratedClientID(ctx)
+}
+
+func (chain *Chain) ConstructTendermintUpdateTMClientHeader(counterparty types.TestChainI, clientID string) types.MsgUpdateClient {
+	panic("implement me")
 }
 
 func (chain *Chain) ConstructMockMsgUpdateClient(clientID string) types.MsgUpdateClient {
@@ -411,7 +414,7 @@ func (chain *Chain) ConnectionOpenTry(ctx context.Context, msg types.MsgConnecti
 				ProofHeight:     msg.ProofInit.Height.GetRevisionHeight(),
 				ProofClient:     msg.ProofClient.Data,
 				ProofConsensus:  msg.ProofConsensus.Data,
-				ConsensusHeight: msg.ProofConsensus.Height.GetRevisionHeight(),
+				ConsensusHeight: msg.ConsensusHeight.GetRevisionHeight(),
 			},
 		),
 	); err != nil {
@@ -438,7 +441,7 @@ func (chain *Chain) ConnectionOpenAck(ctx context.Context, msg types.MsgConnecti
 				ProofTry:        msg.ProofTry.Data,
 				ProofClient:     msg.ProofClient.Data,
 				ProofConsensus:  msg.ProofConsensus.Data,
-				ConsensusHeight: msg.ProofConsensus.Height.GetRevisionHeight(),
+				ConsensusHeight: msg.ConsensusHeight.GetRevisionHeight(),
 			},
 		),
 	)
@@ -543,17 +546,6 @@ func (chain *Chain) ChannelOpenConfirm(ctx context.Context, msg types.MsgChannel
 				ProofAck:    msg.ProofAck.Data,
 				ProofHeight: msg.ProofAck.Height.GetRevisionHeight(),
 			},
-		),
-	)
-
-	return err
-}
-
-func (chain *Chain) SendPacket(ctx context.Context, packet exported.PacketI) error {
-	err := chain.WaitIfNoError(ctx)(
-		chain.IBCHandler.SendPacket(
-			chain.TxOpts(ctx, types.RelayerKeyIndex),
-			packetToCallData(packet),
 		),
 	)
 

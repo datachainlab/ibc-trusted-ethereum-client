@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -22,32 +21,32 @@ const mnemonicPhrase = "math razor capable expose worth grape metal sunset metal
 /*
 NOTE: This test is intended to be run on ganache. Therefore, we are using MockClient instead of IBFT2Client.
 */
-type ContractTestSuite struct {
+type EthTestSuite struct {
 	suite.Suite
 
-	coordinator ibctesting.Coordinator
-	chainA      *ethereum.Chain
-	chainB      *ethereum.Chain
+	coordinator *ibctesting.Coordinator
+	chainA      types.TestChainI
+	chainB      types.TestChainI
 }
 
-func (suite *ContractTestSuite) SetupTest() {
-	chainClient1, err := client.NewETHClient("http://127.0.0.1:8545")
+func (suite *EthTestSuite) SetupTest() {
+	chainClient1, err := client.NewETHClient("http://127.0.0.1:8545", 2021)
 	suite.Require().NoError(err)
 
-	chainClient2, err := client.NewETHClient("http://127.0.0.1:8645")
+	chainClient2, err := client.NewETHClient("http://127.0.0.1:8645", 2022)
 	suite.Require().NoError(err)
 
-	suite.chainA = ethereum.NewChain(suite.T(), 2021, *chainClient1, consts.Contract, mnemonicPhrase, uint64(time.Now().UnixNano()))
-	suite.chainB = ethereum.NewChain(suite.T(), 2022, *chainClient2, consts.Contract, mnemonicPhrase, uint64(time.Now().UnixNano()))
+	suite.chainA = ethereum.NewChain(suite.T(), *chainClient1, consts.Contract, mnemonicPhrase)
+	suite.chainB = ethereum.NewChain(suite.T(), *chainClient2, consts.Contract, mnemonicPhrase)
 	suite.coordinator = ibctesting.NewCoordinator(suite.T(), suite.chainA, suite.chainB)
 }
 
-func NewTransferPath(chainA, chainB *ethereum.Chain) *ibctesting.Path {
+func NewTransferPath(chainA, chainB types.TestChainI) *ibctesting.Path {
 	path := ibctesting.NewPath(chainA, chainB)
 	return path
 }
 
-func (suite *ContractTestSuite) TestChannel() {
+func (suite *EthTestSuite) TestChannel() {
 	ctx := context.Background()
 
 	const (
@@ -188,6 +187,6 @@ func (suite *ContractTestSuite) TestChannel() {
 	suite.Require().Equal(balance0.Int64(), balanceA2.Int64())
 }
 
-func TestContractTestSuite(t *testing.T) {
-	suite.Run(t, new(ContractTestSuite))
+func TestEthTestSuite(t *testing.T) {
+	suite.Run(t, new(EthTestSuite))
 }

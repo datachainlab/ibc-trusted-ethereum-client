@@ -3,29 +3,37 @@ package types
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/cosmos/ibc-go/modules/core/exported"
+	ibctmtypes "github.com/cosmos/ibc-go/modules/light-clients/07-tendermint/types"
 )
 
 type TestChainI interface {
 	T() *testing.T
 
-	Init() error
+	Init(chainID string) error
 
-	ChainID() int64
-	ChainIDString() string
+	ChainID() string
 	GetCommitmentPrefix() []byte
 	GetSenderAddress() string
 
-	BeginBlock()
 	NextBlock()
 
 	GetClientState(counterpartyClientID string) ([]byte, bool, error)
 	GetLatestHeight(counterpartyClientID string, clientType string) exported.Height
 
+	ConstructTendermintMsgCreateClient(
+		trustLevel ibctmtypes.Fraction,
+		trustingPeriod, unbondingPeriod, maxClockDrift time.Duration,
+		upgradePath []string, allowUpdateAfterExpiry, allowUpdateAfterMisbehaviour bool) MsgCreateClient
 	ConstructMockMsgCreateClient() MsgCreateClient
+
 	CreateClient(ctx context.Context, msg MsgCreateClient) (string, error)
+
+	ConstructTendermintUpdateTMClientHeader(counterparty TestChainI, clientID string) MsgUpdateClient
 	ConstructMockMsgUpdateClient(clientID string) MsgUpdateClient
+
 	UpdateClient(ctx context.Context, msg MsgUpdateClient) error
 
 	ConnectionOpenInit(ctx context.Context, msg MsgConnectionOpenInit) (string, error)
@@ -38,7 +46,6 @@ type TestChainI interface {
 	ChannelOpenAck(ctx context.Context, msg MsgChannelOpenAck) error
 	ChannelOpenConfirm(ctx context.Context, msg MsgChannelOpenConfirm) error
 
-	SendPacket(ctx context.Context, packet exported.PacketI) error
 	HandlePacketRecv(ctx context.Context, packet exported.PacketI, proof *Proof) error
 	HandlePacketAcknowledgement(
 		ctx context.Context,

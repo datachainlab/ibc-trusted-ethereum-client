@@ -12,7 +12,7 @@
   "dependencies": {
     "@hyperledger-labs/yui-ibc-solidity": "hyperledger-labs/yui-ibc-solidity.git#601d9e76a85933166795ddb01b70fd99d6a2a81e",
     "@truffle/hdwallet-provider": "1.4.1",
-    "truffle": "^5.3.14",
+    "truffle": "^5.1.65",
     "truffle-contract-size": "^2.0.1"
   },
   "devDependencies": {

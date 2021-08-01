@@ -47,7 +47,7 @@ func NewEndpoint(
 
 // NewDefaultEndpoint constructs a new endpoint using default values.
 // CONTRACT: the counterparty endpoint must be set by the caller.
-func NewDefaultEndpoint(chain *ethereum.Chain) *Endpoint {
+func NewDefaultEndpoint(chain ibctestingtypes.TestChainI) *Endpoint {
 	return &Endpoint{
 		Chain:            chain,
 		ClientConfig:     NewMockConfig(),
@@ -73,6 +73,14 @@ func (endpoint *Endpoint) CreateClient(ctx context.Context) (err error) {
 		require.True(endpoint.Chain.T(), ok)
 
 		msg = endpoint.Counterparty.Chain.ConstructMockMsgCreateClient()
+	case exported.Tendermint:
+		tmConfig, ok := endpoint.ClientConfig.(*TendermintConfig)
+		require.True(endpoint.Chain.T(), ok)
+
+		msg = endpoint.Counterparty.Chain.ConstructTendermintMsgCreateClient(
+			tmConfig.TrustLevel, tmConfig.TrustingPeriod, tmConfig.UnbondingPeriod, tmConfig.MaxClockDrift,
+			ibctestingtypes.UpgradePath, tmConfig.AllowUpdateAfterExpiry, tmConfig.AllowUpdateAfterMisbehaviour,
+		)
 	default:
 		err = fmt.Errorf("client type %s is not supported", endpoint.ClientConfig.GetClientType())
 	}
@@ -98,6 +106,8 @@ func (endpoint *Endpoint) UpdateClient(ctx context.Context) (err error) {
 	switch endpoint.ClientConfig.GetClientType() {
 	case ibcclient.MockClient:
 		msg = endpoint.Counterparty.Chain.ConstructMockMsgUpdateClient(endpoint.ClientID)
+	case exported.Tendermint:
+		msg = endpoint.Counterparty.Chain.ConstructTendermintUpdateTMClientHeader(endpoint.Chain, endpoint.ClientID)
 	default:
 		err = fmt.Errorf("client type %s is not supported", endpoint.ClientConfig.GetClientType())
 	}
@@ -139,7 +149,7 @@ func (endpoint *Endpoint) ConnOpenInit(ctx context.Context) error {
 func (endpoint *Endpoint) ConnOpenTry(ctx context.Context) error {
 	require.NoError(endpoint.Chain.T(), endpoint.UpdateClient(ctx))
 
-	counterpartyClient, proofClient, proofConsensus, proofInit := endpoint.QueryConnectionHandshakeProof()
+	counterpartyClient, proofClient, proofConsensus, consensusHeight, proofInit := endpoint.QueryConnectionHandshakeProof()
 
 	msg := ibctestingtypes.MsgConnectionOpenTry{
 		PreviousConnectionID:     "",
@@ -153,6 +163,7 @@ func (endpoint *Endpoint) ConnOpenTry(ctx context.Context) error {
 		ProofInit:                proofInit,
 		ProofClient:              proofClient,
 		ProofConsensus:           proofConsensus,
+		ConsensusHeight:          consensusHeight,
 		Signer:                   endpoint.Chain.GetSenderAddress(),
 	}
 
@@ -170,7 +181,7 @@ func (endpoint *Endpoint) ConnOpenTry(ctx context.Context) error {
 func (endpoint *Endpoint) ConnOpenAck(ctx context.Context) error {
 	require.NoError(endpoint.Chain.T(), endpoint.UpdateClient(ctx))
 
-	counterpartyClient, proofClient, proofConsensus, proofTry := endpoint.QueryConnectionHandshakeProof()
+	counterpartyClient, proofClient, proofConsensus, consensusHeight, proofTry := endpoint.QueryConnectionHandshakeProof()
 
 	msg := ibctestingtypes.MsgConnectionOpenAck{
 		ConnectionID:             endpoint.ConnectionID,
@@ -180,6 +191,7 @@ func (endpoint *Endpoint) ConnOpenAck(ctx context.Context) error {
 		ProofTry:                 proofTry,
 		ProofClient:              proofClient,
 		ProofConsensus:           proofConsensus,
+		ConsensusHeight:          consensusHeight,
 		Signer:                   endpoint.Chain.GetSenderAddress(),
 	}
 
@@ -190,7 +202,7 @@ func (endpoint *Endpoint) ConnOpenAck(ctx context.Context) error {
 func (endpoint *Endpoint) ConnOpenConfirm(ctx context.Context) error {
 	require.NoError(endpoint.Chain.T(), endpoint.UpdateClient(ctx))
 
-	_, _, _, proofAck := endpoint.QueryConnectionHandshakeProof()
+	_, _, _, _, proofAck := endpoint.QueryConnectionHandshakeProof()
 
 	msg := ibctestingtypes.MsgConnectionOpenConfirm{
 		ConnectionID: endpoint.ConnectionID,
@@ -320,13 +332,20 @@ func (endpoint *Endpoint) QueryConnectionHandshakeProof() (
 	clientState []byte,
 	proofClient *ibctestingtypes.Proof,
 	proofConsensus *ibctestingtypes.Proof,
+	consensusHeight exported.Height,
 	proofConnection *ibctestingtypes.Proof,
 ) {
 	// query proof for the client state on the counterparty
 	clientState, proofClient = endpoint.Counterparty.QueryClientProof()
 
+	consensusHeight = endpoint.Counterparty.Chain.GetLatestHeight(
+		endpoint.Counterparty.ClientID,
+		endpoint.Counterparty.ClientConfig.GetClientType(),
+	)
+
 	// query proof for the consensus state on the counterparty
-	proofConsensus = endpoint.Counterparty.QueryConsensusProof(proofClient.Height)
+	consensusKey := endpoint.Counterparty.Chain.ConsensusStateCommitmentKey(endpoint.Counterparty.ClientID, consensusHeight)
+	proofConsensus = endpoint.Counterparty.QueryProofAtHeight(consensusKey, proofClient.Height)
 
 	// query proof for the connection on the counterparty
 	proofConnection, err := endpoint.Counterparty.QueryConnectionProof(proofClient.Height)
@@ -350,11 +369,6 @@ func (endpoint *Endpoint) QueryClientProof() ([]byte, *ibctestingtypes.Proof) {
 	}
 
 	return cs, proof
-}
-
-func (endpoint *Endpoint) QueryConsensusProof(height exported.Height) *ibctestingtypes.Proof {
-	consensusKey := endpoint.Chain.ConsensusStateCommitmentKey(endpoint.ClientID, height)
-	return endpoint.QueryProof(consensusKey)
 }
 
 func (endpoint *Endpoint) QueryConnectionProof(height exported.Height) (*ibctestingtypes.Proof, error) {

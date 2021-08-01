@@ -2,6 +2,8 @@ package ibctesting
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,32 +11,40 @@ import (
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
+const ChainIDPrefix = "testchain"
+
 type Coordinator struct {
 	t *testing.T
 
-	Chains []types.TestChainI
+	Chains map[string]types.TestChainI
 }
 
-func NewCoordinator(t *testing.T, chains ...types.TestChainI) Coordinator {
-	for _, chain := range chains {
-		if err := chain.Init(); err != nil {
+func NewCoordinator(t *testing.T, chains ...types.TestChainI) *Coordinator {
+	chainMap := make(map[string]types.TestChainI)
+	coord := &Coordinator{t: t}
+
+	for i, chain := range chains {
+		chainID := GetChainID(i)
+		if err := chain.Init(chainID); err != nil {
 			panic(err)
 		}
+		chainMap[chainID] = chain
 	}
-	return Coordinator{t: t, Chains: chains}
+
+	coord.Chains = chainMap
+
+	return coord
 }
 
-func (c Coordinator) GetChain(idx int) types.TestChainI {
-	return c.Chains[idx]
+func (coord Coordinator) GetChain(chainID string) types.TestChainI {
+	chain, found := coord.Chains[chainID]
+	require.True(coord.t, found, fmt.Sprintf("%s chain does not exist", chainID))
+	return chain
 }
 
-// CommitBlock commits a block on the provided indexes and then increments the global time.
-//
-// CONTRACT: the passed in list of indexes must not contain duplicates
-func (coord *Coordinator) CommitBlock(chains ...types.TestChainI) {
-	for _, chain := range chains {
-		chain.NextBlock()
-	}
+// GetChainID returns the chainID used for the provided index.
+func GetChainID(index int) string {
+	return ChainIDPrefix + strconv.Itoa(index)
 }
 
 // Setup constructs a TM client, connection, and channel on both Chains provided. It will
