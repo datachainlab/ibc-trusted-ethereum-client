@@ -54,10 +54,10 @@ IPCPath = "geth.ipc"
 HTTPHost = "0.0.0.0"
 HTTPPort = 8545
 HTTPVirtualHosts = ["localhost"]
-HTTPModules = ["net", "web3", "eth"]
+HTTPModules = ["net", "web3", "eth", "debug", "txpool", "ethash", "miner"]
 WSHost = "0.0.0.0"
 WSPort = 8546
-WSModules = ["net", "web3", "eth"]
+WSModules = ["net", "web3", "eth", "debug", "txpool", "ethash", "miner"]
 GraphQLVirtualHosts = ["localhost"]
 
 [Node.P2P]

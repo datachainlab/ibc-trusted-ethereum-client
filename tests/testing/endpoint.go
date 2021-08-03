@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/cosmos/ibc-go/modules/core/exported"
+	mocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum"
-	ibcclient "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/client"
 	ibctestingtypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
@@ -68,7 +68,7 @@ func (endpoint *Endpoint) CreateClient(ctx context.Context) (err error) {
 	)
 
 	switch endpoint.ClientConfig.GetClientType() {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		_, ok := endpoint.ClientConfig.(*MockConfig)
 		require.True(endpoint.Chain.T(), ok)
 
@@ -104,7 +104,7 @@ func (endpoint *Endpoint) UpdateClient(ctx context.Context) (err error) {
 	)
 
 	switch endpoint.ClientConfig.GetClientType() {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		msg = endpoint.Counterparty.Chain.ConstructMockMsgUpdateClient(endpoint.ClientID)
 	case exported.Tendermint:
 		msg = endpoint.Counterparty.Chain.ConstructTendermintUpdateTMClientHeader(endpoint.Chain, endpoint.ClientID)
@@ -363,7 +363,7 @@ func (endpoint *Endpoint) QueryClientProof() ([]byte, *ibctestingtypes.Proof) {
 	proof := endpoint.QueryProof(clientKey)
 
 	switch endpoint.ClientConfig.GetClientType() {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		h := sha256.Sum256(cs)
 		proof.Data = h[:]
 	}
@@ -376,7 +376,7 @@ func (endpoint *Endpoint) QueryConnectionProof(height exported.Height) (*ibctest
 	proof := endpoint.QueryProofAtHeight(connectionKey, height)
 
 	switch endpoint.ClientConfig.GetClientType() {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		prover, ok := endpoint.Chain.(ibctestingtypes.MockProver)
 		require.True(endpoint.Chain.T(), ok)
 
@@ -393,7 +393,7 @@ func (endpoint *Endpoint) QueryChannelProof() (*ibctestingtypes.Proof, error) {
 	proof := endpoint.QueryProof(channelKey)
 
 	switch endpoint.ClientConfig.GetClientType() {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		prover, ok := endpoint.Chain.(ibctestingtypes.MockProver)
 		require.True(endpoint.Chain.T(), ok)
 
@@ -414,7 +414,7 @@ func (endpoint *Endpoint) QueryPacketProof(packet exported.PacketI) (*ibctesting
 	proof := endpoint.QueryProof(packetKey)
 
 	switch endpoint.ClientConfig.GetClientType() {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		prover, ok := endpoint.Chain.(ibctestingtypes.MockProver)
 		require.True(endpoint.Chain.T(), ok)
 
@@ -436,7 +436,7 @@ func (endpoint *Endpoint) QueryAcknowledgePacketProof(packet exported.PacketI, a
 	proof := endpoint.QueryProof(packetKey)
 
 	switch endpoint.ClientConfig.GetClientType() {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		prover, ok := endpoint.Chain.(ibctestingtypes.MockProver)
 		require.True(endpoint.Chain.T(), ok)
 

@@ -19,31 +19,48 @@ else
 	@echo "'SOURCE={SOURCE}' is required"
 endif
 
-.PHONY: proto-gen
-proto-gen:
-	@echo "Generating Protobuf files"
-	docker run --rm -v $(CURDIR):/workspace --workdir /workspace tendermintdev/sdk-proto-gen sh ./scripts/protocgen.sh
-
 DOCKER_IMAGE_NAME=geth-ethclient
-DOCKER_INTERMEDIATE_IMAGE_NAME=geth-ethclient-intermediate
+DOCKER_SCAFFOLD_IMAGE_NAME=geth-ethclient-scaffold
 
 .PHONY: docker-image
 docker-image:
-	docker build --rm --no-cache --pull \
-	--build-arg GETH_VERSION=${GETH_VERSION} \
-	-t $(DOCKER_INTERMEDIATE_IMAGE_NAME):$(DOCKER_TAG) ./Dockerfiles/geth
+	make docker-image-scaffold
+	make docker-run-scaffold
+	make deploy-contract
+	make docker-commit
+	make docker-rm-scaffold
 
 .PHONY: docker-run
 docker-run:
-	docker run -it -d --name $(DOCKER_INTERMEDIATE_IMAGE_NAME) \
+	docker run -it -d --name $(DOCKER_IMAGE_NAME) \
+    	-p8545:8545 -p8546:8546 \
+    	$(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
+
+.PHONY: docker-rm-container
+docker-rm-container:
+	docker container rm -f $(DOCKER_IMAGE_NAME)
+
+.PHONY: docker-image-scaffold
+docker-image-scaffold:
+	docker build --rm --no-cache --pull \
+	--build-arg GETH_VERSION=${GETH_VERSION} \
+	-t $(DOCKER_SCAFFOLD_IMAGE_NAME):$(DOCKER_TAG) ./Dockerfiles/geth
+
+.PHONY: docker-run-scaffold
+docker-run-scaffold:
+	docker run -it -d --name $(DOCKER_SCAFFOLD_IMAGE_NAME) \
 	-p8545:8545 -p8546:8546 \
-	$(DOCKER_INTERMEDIATE_IMAGE_NAME):$(DOCKER_TAG)
+	$(DOCKER_SCAFFOLD_IMAGE_NAME):$(DOCKER_TAG)
+
+.PHONY: deploy-contract
+deploy-contract:
+	cd contract && npm run migrate
 
 .PHONY: docker-commit
 docker-commit:
-	docker commit --pause=true $(DOCKER_INTERMEDIATE_IMAGE_NAME) $(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
+	docker commit --pause=true $(DOCKER_SCAFFOLD_IMAGE_NAME) $(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
 
-.PHONY: docker-rm
+.PHONY: docker-rm-scaffold
 docker-rm:
-	docker container rm -f $(DOCKER_INTERMEDIATE_IMAGE_NAME)
-	docker rmi -f $(DOCKER_INTERMEDIATE_IMAGE_NAME)
+	docker container rm -f $(DOCKER_SCAFFOLD_IMAGE_NAME)
+	docker rmi -f $(DOCKER_SCAFFOLD_IMAGE_NAME)

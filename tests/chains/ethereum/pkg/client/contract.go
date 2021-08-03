@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"math/big"
 
+	mocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-
-	ibcclient "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/client"
 )
 
 type ContractState interface {
@@ -18,7 +17,7 @@ type ContractState interface {
 
 func (cl ChainClient) GetContractState(ctx context.Context, address common.Address, storageKeys [][]byte, bn *big.Int, clientType string) (ContractState, error) {
 	switch clientType {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		return cl.GetMockContractState(ctx, address, storageKeys, bn)
 	default:
 		panic(fmt.Sprintf("unknown client type '%v'", clientType))

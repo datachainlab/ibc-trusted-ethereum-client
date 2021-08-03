@@ -3,6 +3,7 @@ package ibctesting
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/cosmos/ibc-go/modules/core/exported"
 	"github.com/cosmos/ibc-go/modules/core/types"
 	ibctmtypes "github.com/cosmos/ibc-go/modules/light-clients/07-tendermint/types"
+	mocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 	"github.com/stretchr/testify/require"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -40,6 +42,7 @@ import (
 	ibctestingtypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
+var _ ibctestingtypes.MockProver = (*TestChain)(nil)
 var _ ibctestingtypes.TestChainI = (*TestChain)(nil)
 
 // TestChain is a testing struct that wraps a simapp with the last TM Header, the current ABCI
@@ -196,7 +199,20 @@ func (chain *TestChain) ConstructTendermintMsgCreateClient(
 }
 
 func (chain *TestChain) ConstructMockMsgCreateClient() ibctestingtypes.MsgCreateClient {
-	panic("implement me")
+	height, ok := chain.LastHeader.GetHeight().(clienttypes.Height)
+	require.True(chain.t, ok)
+
+	clientState := mocktypes.NewClientState(height, false)
+	consensusState := &mocktypes.ConsensusState{
+		Timestamp: uint64(chain.LastHeader.GetTime().Unix()),
+	}
+
+	return ibctestingtypes.MsgCreateClient{
+		ClientType:          mocktypes.Mock,
+		ClientStateBytes:    clienttypes.MustMarshalClientState(chain.Codec, clientState),
+		ConsensusStateBytes: clienttypes.MustMarshalConsensusState(chain.Codec, consensusState),
+		Height:              height,
+	}
 }
 
 func (chain *TestChain) CreateClient(ctx context.Context, msg ibctestingtypes.MsgCreateClient) (string, error) {
@@ -233,12 +249,19 @@ func (chain *TestChain) ConstructTendermintUpdateTMClientHeader(
 	return ibctestingtypes.MsgUpdateClient{
 		ClientID: clientID,
 		Header:   clienttypes.MustMarshalHeader(chain.Codec, header),
-		Signer:   counterparty.GetSenderAddress(),
 	}
 }
 
 func (chain *TestChain) ConstructMockMsgUpdateClient(clientID string) ibctestingtypes.MsgUpdateClient {
-	panic("implement me")
+	header := &mocktypes.Header{
+		Height:    chain.LastHeader.GetHeight().GetRevisionHeight(),
+		Timestamp: uint64(chain.LastHeader.GetTime().Unix()),
+	}
+
+	return ibctestingtypes.MsgUpdateClient{
+		ClientID: clientID,
+		Header:   clienttypes.MustMarshalHeader(chain.Codec, header),
+	}
 }
 
 func (chain *TestChain) UpdateClient(ctx context.Context, msg ibctestingtypes.MsgUpdateClient) error {
@@ -248,7 +271,7 @@ func (chain *TestChain) UpdateClient(ctx context.Context, msg ibctestingtypes.Ms
 	m, err := clienttypes.NewMsgUpdateClient(
 		msg.ClientID,
 		header,
-		msg.Signer,
+		chain.GetSenderAddress(),
 	)
 	require.NoError(chain.t, err)
 
@@ -775,4 +798,40 @@ func (chain *TestChain) GetChannelCapability(portID, channelID string) *capabili
 	require.True(chain.t, ok)
 
 	return cap
+}
+
+func (chain *TestChain) MockConnectionProof(connectionID string, proof *ibctestingtypes.Proof) (*ibctestingtypes.Proof, error) {
+	conn, ok := chain.App.GetIBCKeeper().ConnectionKeeper.GetConnection(chain.GetContext(), connectionID)
+	require.True(chain.t, ok)
+
+	bz := chain.Codec.MustMarshal(&conn)
+	h := sha256.Sum256(bz)
+	proof.Data = h[:]
+
+	return proof, nil
+}
+
+func (chain *TestChain) MockChannelProof(portID string, channelID string, proof *ibctestingtypes.Proof) (*ibctestingtypes.Proof, error) {
+	channel, ok := chain.App.GetIBCKeeper().ChannelKeeper.GetChannel(chain.GetContext(), portID, channelID)
+	require.True(chain.t, ok)
+
+	bz := chain.Codec.MustMarshal(&channel)
+	h := sha256.Sum256(bz)
+	proof.Data = h[:]
+
+	return proof, nil
+}
+
+func (chain *TestChain) MockPacketProof(packet exported.PacketI, proof *ibctestingtypes.Proof) (*ibctestingtypes.Proof, error) {
+	h := channeltypes.CommitPacket(chain.Codec, packet)
+	proof.Data = h[:]
+
+	return proof, nil
+}
+
+func (chain *TestChain) MockAcknowledgementProof(ack []byte, proof *ibctestingtypes.Proof) (*ibctestingtypes.Proof, error) {
+	h := channeltypes.CommitAcknowledgement(ack)
+	proof.Data = h[:]
+
+	return proof, nil
 }

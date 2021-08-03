@@ -2,7 +2,8 @@ package simapp
 
 import (
 	"github.com/cosmos/cosmos-sdk/std"
-	simappparams "github.com/cosmos/ibc-go/testing/simapp/params"
+
+	simappparams "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp/params"
 )
 
 // MakeTestEncodingConfig creates an EncodingConfig for testing. This function

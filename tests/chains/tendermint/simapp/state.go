@@ -19,7 +19,8 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-	simappparams "github.com/cosmos/ibc-go/testing/simapp/params"
+
+	simappparams "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp/params"
 )
 
 // AppStateFn returns the initial application state using a genesis or the simulation parameters.

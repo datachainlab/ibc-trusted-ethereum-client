@@ -7,10 +7,10 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/ibc-go/testing/simapp"
-
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/crypto"
+
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp"
 )
 
 func TestSimGenesisAccountValidate(t *testing.T) {

@@ -5,8 +5,9 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/server"
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
-	"github.com/cosmos/ibc-go/testing/simapp"
-	"github.com/cosmos/ibc-go/testing/simapp/simd/cmd"
+
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp"
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp/simd/cmd"
 )
 
 func main() {

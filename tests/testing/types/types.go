@@ -19,7 +19,6 @@ type MsgCreateClient struct {
 type MsgUpdateClient struct {
 	ClientID string
 	Header   []byte
-	Signer   string
 }
 
 type MsgConnectionOpenInit struct {

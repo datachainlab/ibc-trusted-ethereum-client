@@ -31,7 +31,8 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	ibctransfertypes "github.com/cosmos/ibc-go/modules/apps/transfer/types"
 	ibchost "github.com/cosmos/ibc-go/modules/core/24-host"
-	"github.com/cosmos/ibc-go/testing/simapp/helpers"
+
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp/helpers"
 )
 
 // Get flags every time the simulator is run

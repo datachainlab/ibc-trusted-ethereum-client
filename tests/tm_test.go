@@ -31,7 +31,17 @@ func (suite *TendermintTestSuite) SetupTest() {
 	suite.coordinator = ibctesting.NewCoordinator(suite.T(), suite.chainA, suite.chainB)
 }
 
-func (suite *TendermintTestSuite) TestChannel() {
+func (suite *TendermintTestSuite) TestChannelWithMockClient() {
+	ctx := context.Background()
+
+	path := NewTransferPath(suite.chainA, suite.chainB)
+
+	suite.coordinator.Setup(ctx, path)
+
+	suite.testTransfer(ctx, path)
+}
+
+func (suite *TendermintTestSuite) TestChannelWithTendermintClient() {
 	ctx := context.Background()
 
 	path := NewTransferPath(suite.chainA, suite.chainB)
@@ -40,6 +50,10 @@ func (suite *TendermintTestSuite) TestChannel() {
 
 	suite.coordinator.Setup(ctx, path)
 
+	suite.testTransfer(ctx, path)
+}
+
+func (suite *TendermintTestSuite) testTransfer(ctx context.Context, path *ibctesting.Path) {
 	chainA, ok := path.EndpointA.Chain.(*tm.TestChain)
 	suite.Require().True(ok)
 

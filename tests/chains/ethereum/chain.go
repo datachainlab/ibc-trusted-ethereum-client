@@ -14,16 +14,19 @@ import (
 	"time"
 
 	clienttypes "github.com/cosmos/ibc-go/modules/core/02-client/types"
+	tmchanneltypes "github.com/cosmos/ibc-go/modules/core/04-channel/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
 	ibctmtypes "github.com/cosmos/ibc-go/modules/light-clients/07-tendermint/types"
-	"github.com/gogo/protobuf/proto"
-	pbtypes "github.com/gogo/protobuf/types"
-
+	mocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/gogo/protobuf/proto"
+	pbtypes "github.com/gogo/protobuf/types"
+	channeltypes "github.com/hyperledger-labs/yui-ibc-solidity/pkg/ibc/channel"
+	connectiontypes "github.com/hyperledger-labs/yui-ibc-solidity/pkg/ibc/connection"
 	"github.com/stretchr/testify/require"
 
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/client"
@@ -33,10 +36,6 @@ import (
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/contract/ics20bank"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/contract/ics20transferbank"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/contract/simpletoken"
-	channeltypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/channel"
-	ibcclient "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/client"
-	mockclienttypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/client/mock"
-	connectiontypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/ibc/connection"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/wallet"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
@@ -198,7 +197,7 @@ func (chain *Chain) GetSenderAddress() string {
 
 func (chain *Chain) NextBlock() {
 	_, _ = chain.chainClient.MineBlock(time.Now().UTC())
-	for _, clientType := range []string{ibcclient.MockClient} {
+	for _, clientType := range []string{mocktypes.Mock} {
 		chain.updateHeader(clientType)
 	}
 }
@@ -213,7 +212,7 @@ func (chain *Chain) GetClientState(clientID string) ([]byte, bool, error) {
 func (chain *Chain) GetLatestHeight(clientID string, clientType string) (height exported.Height) {
 	var rh uint64
 	switch clientType {
-	case ibcclient.MockClient:
+	case mocktypes.Mock:
 		rh = chain.GetMockClientState(clientID).LatestHeight
 	default:
 		panic(fmt.Errorf("unknown chainClient type: '%v'", clientType))
@@ -266,7 +265,7 @@ func (chain *Chain) GetChannel(portID, channelID string) (ibchost.ChannelData, b
 	)
 }
 
-func (chain *Chain) GetMockClientState(clientID string) *mockclienttypes.ClientState {
+func (chain *Chain) GetMockClientState(clientID string) *mocktypes.ClientState {
 	ctx := context.Background()
 	bz, found, err := chain.IBCHost.GetClientState(chain.CallOpts(ctx, types.RelayerKeyIndex), clientID)
 	if err != nil {
@@ -274,7 +273,7 @@ func (chain *Chain) GetMockClientState(clientID string) *mockclienttypes.ClientS
 	} else if !found {
 		panic("clientState not found")
 	}
-	var cs mockclienttypes.ClientState
+	var cs mocktypes.ClientState
 	if err := UnmarshalWithAny(bz, &cs); err != nil {
 		panic(err)
 	}
@@ -300,12 +299,12 @@ func (chain *Chain) ConstructTendermintMsgCreateClient(trustLevel ibctmtypes.Fra
 }
 
 func (chain *Chain) ConstructMockMsgCreateClient() types.MsgCreateClient {
-	clientType := ibcclient.MockClient
+	clientType := mocktypes.Mock
 
-	clientState := mockclienttypes.ClientState{
+	clientState := mocktypes.ClientState{
 		LatestHeight: chain.LastHeader(clientType).Number.Uint64(),
 	}
-	consensusState := mockclienttypes.ConsensusState{
+	consensusState := mocktypes.ConsensusState{
 		Timestamp: chain.LastHeader(clientType).Time,
 	}
 	clientStateBytes, err := MarshalWithAny(&clientState)
@@ -345,8 +344,8 @@ func (chain *Chain) ConstructTendermintUpdateTMClientHeader(counterparty types.T
 }
 
 func (chain *Chain) ConstructMockMsgUpdateClient(clientID string) types.MsgUpdateClient {
-	cs := chain.LastContractState[ibcclient.MockClient].(client.ETHContractState)
-	header := mockclienttypes.Header{
+	cs := chain.LastContractState[mocktypes.Mock].(client.ETHContractState)
+	header := mocktypes.Header{
 		Height:    cs.Header().Number.Uint64(),
 		Timestamp: cs.Header().Time,
 	}
@@ -652,7 +651,7 @@ func (chain *Chain) FindPacket(
 	sourcePortID string,
 	sourceChannel string,
 	sequence uint64,
-) (*channeltypes.Packet, error) {
+) (*tmchanneltypes.Packet, error) {
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(0),
 		Addresses: []common.Address{
@@ -685,14 +684,14 @@ func (chain *Chain) FindPacket(
 				TimeoutTimestamp uint64 "json:\"timeout_timestamp\""
 			})
 			if p.SourcePort == sourcePortID && p.SourceChannel == sourceChannel && p.Sequence == sequence {
-				return &channeltypes.Packet{
+				return &tmchanneltypes.Packet{
 					Sequence:           p.Sequence,
 					SourcePort:         p.SourcePort,
 					SourceChannel:      p.SourceChannel,
 					DestinationPort:    p.DestinationPort,
 					DestinationChannel: p.DestinationChannel,
 					Data:               p.Data,
-					TimeoutHeight:      channeltypes.Height(p.TimeoutHeight),
+					TimeoutHeight:      clienttypes.Height(p.TimeoutHeight),
 					TimeoutTimestamp:   p.TimeoutTimestamp,
 				}, nil
 			}

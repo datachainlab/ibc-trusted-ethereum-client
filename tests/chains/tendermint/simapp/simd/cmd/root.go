@@ -30,8 +30,9 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/crisis"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
-	"github.com/cosmos/ibc-go/testing/simapp"
-	"github.com/cosmos/ibc-go/testing/simapp/params"
+
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp"
+	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp/params"
 )
 
 // NewRootCmd creates a new root command for simd. It is called once in the

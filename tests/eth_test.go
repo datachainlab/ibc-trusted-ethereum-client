@@ -30,14 +30,11 @@ type EthTestSuite struct {
 }
 
 func (suite *EthTestSuite) SetupTest() {
-	chainClient1, err := client.NewETHClient("http://127.0.0.1:8545", 2021)
+	chainClient, err := client.NewETHClient("http://127.0.0.1:8545", 2021)
 	suite.Require().NoError(err)
 
-	chainClient2, err := client.NewETHClient("http://127.0.0.1:8645", 2022)
-	suite.Require().NoError(err)
-
-	suite.chainA = ethereum.NewChain(suite.T(), *chainClient1, consts.Contract, mnemonicPhrase)
-	suite.chainB = ethereum.NewChain(suite.T(), *chainClient2, consts.Contract, mnemonicPhrase)
+	suite.chainA = ethereum.NewChain(suite.T(), *chainClient, consts.Contract, mnemonicPhrase)
+	suite.chainB = ethereum.NewChain(suite.T(), *chainClient, consts.Contract, mnemonicPhrase)
 	suite.coordinator = ibctesting.NewCoordinator(suite.T(), suite.chainA, suite.chainB)
 }
 
