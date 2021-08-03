@@ -57,10 +57,10 @@ func (suite *EthTestSuite) TestChannel() {
 	suite.coordinator.Setup(ctx, path)
 
 	/// Tests for Transfer module ///
-	chainA, ok := path.EndpointA.Chain.(*ethereum.Chain)
+	chainA, ok := path.EndpointA.Chain.(*ethereum.TestChain)
 	suite.Require().True(ok)
 
-	chainB, ok := path.EndpointB.Chain.(*ethereum.Chain)
+	chainB, ok := path.EndpointB.Chain.(*ethereum.TestChain)
 	suite.Require().True(ok)
 
 	balance0, err := chainA.SimpleToken.BalanceOf(
