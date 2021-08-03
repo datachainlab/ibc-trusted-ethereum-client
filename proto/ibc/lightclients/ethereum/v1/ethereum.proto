@@ -10,7 +10,7 @@ import "google/protobuf/timestamp.proto";
 import "ibc/core/client/v1/client.proto";
 import "ibc/core/commitment/v1/commitment.proto";
 
-option go_package = "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/xx-ethereum/types";
+option go_package = "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum/types";
 option (gogoproto.goproto_getters_all)  = false;
 
 message ClientState {
@@ -31,7 +31,7 @@ message ConsensusState {
   // was stored.
   uint64 timestamp = 1;
 
-  // commitment root (i.e app hash)
+  // storage root for ibc_store_address 
   ibc.core.commitment.v1.MerkleRoot root = 2 [(gogoproto.nullable) = false];
 
   // public key of the trusted submitter
@@ -48,13 +48,13 @@ message Header {
   // height to update multisig public key at
   ibc.core.client.v1.Height height = 1 [(gogoproto.nullable) = false];
 
-  bytes               parent_hash     = 2;
-  bytes               state_root      = 3;
-  uint64              timestamp       = 4;
-  bytes               account_proof   = 5;
-  bytes               signature       = 6;
-  google.protobuf.Any new_public_key  = 7 [(gogoproto.moretags) = "yaml:\"new_public_key\""];
-  string              new_diversifier = 8 [(gogoproto.moretags) = "yaml:\"new_diversifier\""];
+  bytes               state_root      = 2;
+  uint64              timestamp       = 3;
+  // account_proof follows the proof format of IBFT2.0 client
+  bytes               account_proof   = 4;
+  bytes               signature       = 5;
+  google.protobuf.Any new_public_key  = 6 [(gogoproto.moretags) = "yaml:\"new_public_key\""];
+  string              new_diversifier = 7 [(gogoproto.moretags) = "yaml:\"new_diversifier\""];
 }
 
 // Misbehaviour defines misbehaviour for a multisig which consists
