@@ -344,8 +344,7 @@ func (endpoint *Endpoint) QueryConnectionHandshakeProof() (
 	)
 
 	// query proof for the consensus state on the counterparty
-	consensusKey := endpoint.Counterparty.Chain.ConsensusStateCommitmentKey(endpoint.Counterparty.ClientID, consensusHeight)
-	proofConsensus = endpoint.Counterparty.QueryProofAtHeight(consensusKey, proofClient.Height)
+	proofConsensus = endpoint.Counterparty.QueryConsensusProof(consensusHeight, proofClient.Height)
 
 	// query proof for the connection on the counterparty
 	proofConnection, err := endpoint.Counterparty.QueryConnectionProof(proofClient.Height)
@@ -369,6 +368,19 @@ func (endpoint *Endpoint) QueryClientProof() ([]byte, *ibctestingtypes.Proof) {
 	}
 
 	return cs, proof
+}
+
+func (endpoint *Endpoint) QueryConsensusProof(consensusHeight exported.Height, proofHeight exported.Height) *ibctestingtypes.Proof {
+	consensusKey := endpoint.Chain.ConsensusStateCommitmentKey(endpoint.ClientID, consensusHeight)
+	proof := endpoint.QueryProofAtHeight(consensusKey, proofHeight)
+
+	switch endpoint.ClientConfig.GetClientType() {
+	case mocktypes.Mock:
+		h := sha256.Sum256([]byte("dummy"))
+		proof.Data = h[:]
+	}
+
+	return proof
 }
 
 func (endpoint *Endpoint) QueryConnectionProof(height exported.Height) (*ibctestingtypes.Proof, error) {
