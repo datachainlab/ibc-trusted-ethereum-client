@@ -32,7 +32,7 @@ type Endpoint struct {
 // NewEndpoint constructs a new endpoint without the counterparty.
 // CONTRACT: the counterparty endpoint must be set by the caller.
 func NewEndpoint(
-	chain *ethereum.Chain,
+	chain *ethereum.TestChain,
 	clientConfig ClientConfig,
 	connectionConfig *ConnectionConfig,
 	channelConfig *ChannelConfig,
@@ -361,7 +361,7 @@ func (endpoint *Endpoint) QueryClientProof() ([]byte, *ibctestingtypes.Proof) {
 	clientKey := endpoint.Chain.ClientStateCommitmentKey(endpoint.ClientID)
 	proof := endpoint.QueryProof(clientKey)
 
-	switch endpoint.ClientConfig.GetClientType() {
+	switch endpoint.Counterparty.ClientConfig.GetClientType() {
 	case mocktypes.Mock:
 		h := sha256.Sum256(cs)
 		proof.Data = h[:]
@@ -374,7 +374,7 @@ func (endpoint *Endpoint) QueryConsensusProof(consensusHeight exported.Height, p
 	consensusKey := endpoint.Chain.ConsensusStateCommitmentKey(endpoint.ClientID, consensusHeight)
 	proof := endpoint.QueryProofAtHeight(consensusKey, proofHeight)
 
-	switch endpoint.ClientConfig.GetClientType() {
+	switch endpoint.Counterparty.ClientConfig.GetClientType() {
 	case mocktypes.Mock:
 		h := sha256.Sum256([]byte("dummy"))
 		proof.Data = h[:]
@@ -387,7 +387,7 @@ func (endpoint *Endpoint) QueryConnectionProof(height exported.Height) (*ibctest
 	connectionKey := endpoint.Chain.ConnectionStateCommitmentKey(endpoint.ConnectionID)
 	proof := endpoint.QueryProofAtHeight(connectionKey, height)
 
-	switch endpoint.ClientConfig.GetClientType() {
+	switch endpoint.Counterparty.ClientConfig.GetClientType() {
 	case mocktypes.Mock:
 		prover, ok := endpoint.Chain.(ibctestingtypes.MockProver)
 		require.True(endpoint.Chain.T(), ok)
@@ -404,7 +404,7 @@ func (endpoint *Endpoint) QueryChannelProof() (*ibctestingtypes.Proof, error) {
 	channelKey := endpoint.Chain.ChannelStateCommitmentKey(endpoint.ChannelConfig.PortID, endpoint.ChannelID)
 	proof := endpoint.QueryProof(channelKey)
 
-	switch endpoint.ClientConfig.GetClientType() {
+	switch endpoint.Counterparty.ClientConfig.GetClientType() {
 	case mocktypes.Mock:
 		prover, ok := endpoint.Chain.(ibctestingtypes.MockProver)
 		require.True(endpoint.Chain.T(), ok)
