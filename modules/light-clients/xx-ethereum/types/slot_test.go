@@ -1,25 +1,26 @@
-package types
+package types_test
 
 import (
 	"math/big"
 	"reflect"
 	"testing"
 
+	ethtypes "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/xx-ethereum/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_clientStateCommitSlot(t *testing.T) {
-	got, err := clientStateCommitmentSlot("dummy")
+func Test_ClientStateCommitSlot(t *testing.T) {
+	got, err := ethtypes.ClientStateCommitmentSlot("dummy")
 	// calculated with web3.js:
 	//   web3.utils.soliditySha3({t: 'bytes', v: web3.utils.soliditySha3({t: 'uint8', v: '0'}, "dummy")}, new BN(0))
 	expected := hexutil.MustDecode("0x97ea163fb10e33695b64a6614153eda97be45d3091233132ffe6244a42f67167")
 	assert.NoError(t, err)
 	assert.Equal(t, expected, got)
 }
-func Test_consensusStateCommitmentSlot(t *testing.T) {
-	got, err := consensusStateCommitmentSlot("dummy", uint64(100))
+func Test_ConsensusStateCommitmentSlot(t *testing.T) {
+	got, err := ethtypes.ConsensusStateCommitmentSlot("dummy", uint64(100))
 	// calculated with web3.js:
 	//   web3.utils.soliditySha3({t: 'bytes', v: web3.utils.soliditySha3({t: 'uint8', v: '1'}, "dummy", "/", {t: 'uint64', v: '100'})}, new BN(0))
 	expected := hexutil.MustDecode("0xfcfc6964a35588536ba3235ae938769b113cadde0d01a90df1a2b3385aea3f6c")
@@ -27,8 +28,8 @@ func Test_consensusStateCommitmentSlot(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
-func Test_connectionCommitmentSlot(t *testing.T) {
-	got, err := connectionCommitmentSlot("dummy")
+func Test_ConnectionCommitmentSlot(t *testing.T) {
+	got, err := ethtypes.ConnectionCommitmentSlot("dummy")
 	// calculated with web3.js:
 	//   web3.utils.soliditySha3({t: 'bytes', v: web3.utils.soliditySha3({t: 'uint8', v: '2'}, "dummy")}, new BN(0))
 	expected := hexutil.MustDecode("0x18a8fa4ffca4943c10185beedf9a5213834501dcaf9663a5ff48b42c08de50dc")
@@ -36,8 +37,8 @@ func Test_connectionCommitmentSlot(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
-func Test_channelCommitmentSlot(t *testing.T) {
-	got, err := channelCommitmentSlot("port", "dummy")
+func Test_ChannelCommitmentSlot(t *testing.T) {
+	got, err := ethtypes.ChannelCommitmentSlot("port", "dummy")
 	// calculated with web3.js:
 	//   web3.utils.soliditySha3({t: 'bytes', v: web3.utils.soliditySha3({t: 'uint8', v: '3'}, "port", "/", "dummy")}, new BN(0))
 	expected := hexutil.MustDecode("0x9d8ab2aa12af57a51194c5d1a602da7935f4053bd23d42ac40df27c5937a7f20")
@@ -45,8 +46,8 @@ func Test_channelCommitmentSlot(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
-func Test_packetCommitmentSlot(t *testing.T) {
-	got, err := packetCommitmentSlot("port", "dummy", uint64(1))
+func Test_PacketCommitmentSlot(t *testing.T) {
+	got, err := ethtypes.PacketCommitmentSlot("port", "dummy", uint64(1))
 	// calculated with web3.js:
 	//   web3.utils.soliditySha3({t: 'bytes', v: web3.utils.soliditySha3({t: 'uint8', v: '4'}, "port", "/", "dummy", "/", {t: 'uint64', v: '1'})}, new BN(0))
 	expected := hexutil.MustDecode("0x2734277411ed2d3676c2e2796d69f356a43da11f9c2ae0711e302962e5614b74")
@@ -54,8 +55,8 @@ func Test_packetCommitmentSlot(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
-func Test_packetAcknowledgementCommitmentSlot(t *testing.T) {
-	got, err := packetAcknowledgementCommitmentSlot("port", "dummy", uint64(1))
+func Test_PacketAcknowledgementCommitmentSlot(t *testing.T) {
+	got, err := ethtypes.PacketAcknowledgementCommitmentSlot("port", "dummy", uint64(1))
 	// calculated with web3.js:
 	//   web3.utils.soliditySha3({t: 'bytes', v: web3.utils.soliditySha3({t: 'uint8', v: '5'}, "port", "/", "dummy", "/", {t: 'uint64', v: '1'})}, new BN(0))
 	expected := hexutil.MustDecode("0x919e9f45e9d7ea03ca371db62f537d8fd64fc21149cce6ab10511f967d1b2d32")
@@ -92,7 +93,7 @@ func Test_keccak256AbiEncodePacked(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := keccak256AbiEncodePacked(tt.args.data...)
+			got, err := ethtypes.ExportKeccak256AbiEncodePacked(tt.args.data...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("keccak256AbiEncodePacked() error = %v, wantErr %v", err, tt.wantErr)
 				return

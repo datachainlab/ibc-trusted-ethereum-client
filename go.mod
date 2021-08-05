@@ -24,6 +24,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tendermint/tendermint v0.34.10
 	github.com/tendermint/tm-db v0.6.4
-	github.com/tyler-smith/go-bip39 v1.0.1-0.20181017060643-dbb3b84ba2ef
+	github.com/tyler-smith/go-bip39 v1.0.2
+	github.com/vocdoni/storage-proofs-eth-go v0.1.6-0.20210719161106-675817be681e
 	google.golang.org/protobuf v1.26.0
 )

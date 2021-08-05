@@ -29,7 +29,7 @@ func (cs ClientState) CheckHeaderAndUpdateState(
 		return nil, nil, err
 	}
 
-	proof, err := rlpDecode(smHeader.AccountProof)
+	proof, err := decodeRLP(smHeader.AccountProof)
 	if err != nil {
 		return nil, nil, sdkerrors.Wrap(ErrInvalidProof, "failed to unmarshal proof into commitment merkle proof")
 	}

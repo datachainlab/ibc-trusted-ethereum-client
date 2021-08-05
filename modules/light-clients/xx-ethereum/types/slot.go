@@ -25,6 +25,83 @@ const (
 	packetAckPrefix      = uint8(5)
 )
 
+// Commitment key generator
+
+func ClientCommitmentKey(clientId string) ([]byte, error) {
+	return keccak256AbiEncodePacked(clientPrefix, clientId)
+}
+
+func ConsensusCommitmentKey(clientId string, height uint64) ([]byte, error) {
+	return keccak256AbiEncodePacked(consensusStatePrefix, clientId, "/", height)
+}
+
+func ConnectionCommitmentKey(connectionId string) ([]byte, error) {
+	return keccak256AbiEncodePacked(connectionPrefix, connectionId)
+}
+
+func ChannelCommitmentKey(portId, channelId string) ([]byte, error) {
+	return keccak256AbiEncodePacked(channelPrefix, portId, "/", channelId)
+}
+
+func PacketCommitmentKey(portId, channelId string, sequence uint64) ([]byte, error) {
+	return keccak256AbiEncodePacked(packetPrefix, portId, "/", channelId, "/", sequence)
+}
+
+func PacketAcknowledgementCommitmentKey(portId, channelId string, sequence uint64) ([]byte, error) {
+	return keccak256AbiEncodePacked(packetAckPrefix, portId, "/", channelId, "/", sequence)
+}
+
+// Slot calculator
+
+func ClientStateCommitmentSlot(clientId string) ([]byte, error) {
+	k, err := ClientCommitmentKey(clientId)
+	if err != nil {
+		return nil, err
+	}
+	return keccak256AbiEncodePacked(k, commitmentSlot)
+}
+
+func ConsensusStateCommitmentSlot(clientId string, height uint64) ([]byte, error) {
+	k, err := ConsensusCommitmentKey(clientId, height)
+	if err != nil {
+		return nil, err
+	}
+	return keccak256AbiEncodePacked(k, commitmentSlot)
+}
+
+func ConnectionCommitmentSlot(connectionId string) ([]byte, error) {
+	k, err := ConnectionCommitmentKey(connectionId)
+	if err != nil {
+		return nil, err
+	}
+	return keccak256AbiEncodePacked(k, commitmentSlot)
+}
+
+func ChannelCommitmentSlot(portId, channelId string) ([]byte, error) {
+	k, err := ChannelCommitmentKey(portId, channelId)
+	if err != nil {
+		return nil, err
+	}
+	return keccak256AbiEncodePacked(k, commitmentSlot)
+}
+
+func PacketCommitmentSlot(portId, channelId string, sequence uint64) ([]byte, error) {
+	k, err := PacketCommitmentKey(portId, channelId, sequence)
+	if err != nil {
+		return nil, err
+	}
+	return keccak256AbiEncodePacked(k, commitmentSlot)
+}
+
+func PacketAcknowledgementCommitmentSlot(portId, channelId string, sequence uint64) ([]byte, error) {
+	k, err := PacketAcknowledgementCommitmentKey(portId, channelId, sequence)
+	if err != nil {
+		return nil, err
+	}
+	return keccak256AbiEncodePacked(k, commitmentSlot)
+}
+
+// keccak256AbiEncodePacked only covers some data types.
 func keccak256AbiEncodePacked(data ...interface{}) ([]byte, error) {
 	// abi.encodePacked
 	var bzs [][]byte
@@ -76,80 +153,4 @@ func evenLengthHex(v string) string {
 		v = "0" + v
 	}
 	return v
-}
-
-// Commitment key generator
-
-func clientCommitmentKey(clientId string) ([]byte, error) {
-	return keccak256AbiEncodePacked(clientPrefix, clientId)
-}
-
-func consensusCommitmentKey(clientId string, height uint64) ([]byte, error) {
-	return keccak256AbiEncodePacked(consensusStatePrefix, clientId, "/", height)
-}
-
-func connectionCommitmentKey(connectionId string) ([]byte, error) {
-	return keccak256AbiEncodePacked(connectionPrefix, connectionId)
-}
-
-func channelCommitmentKey(portId, channelId string) ([]byte, error) {
-	return keccak256AbiEncodePacked(channelPrefix, portId, "/", channelId)
-}
-
-func packetCommitmentKey(portId, channelId string, sequence uint64) ([]byte, error) {
-	return keccak256AbiEncodePacked(packetPrefix, portId, "/", channelId, "/", sequence)
-}
-
-func packetAcknowledgementCommitmentKey(portId, channelId string, sequence uint64) ([]byte, error) {
-	return keccak256AbiEncodePacked(packetAckPrefix, portId, "/", channelId, "/", sequence)
-}
-
-// Slot calculator
-
-func clientStateCommitmentSlot(clientId string) ([]byte, error) {
-	k, err := clientCommitmentKey(clientId)
-	if err != nil {
-		return nil, err
-	}
-	return keccak256AbiEncodePacked(k, commitmentSlot)
-}
-
-func consensusStateCommitmentSlot(clientId string, height uint64) ([]byte, error) {
-	k, err := consensusCommitmentKey(clientId, height)
-	if err != nil {
-		return nil, err
-	}
-	return keccak256AbiEncodePacked(k, commitmentSlot)
-}
-
-func connectionCommitmentSlot(connectionId string) ([]byte, error) {
-	k, err := connectionCommitmentKey(connectionId)
-	if err != nil {
-		return nil, err
-	}
-	return keccak256AbiEncodePacked(k, commitmentSlot)
-}
-
-func channelCommitmentSlot(portId, channelId string) ([]byte, error) {
-	k, err := channelCommitmentKey(portId, channelId)
-	if err != nil {
-		return nil, err
-	}
-	return keccak256AbiEncodePacked(k, commitmentSlot)
-}
-
-func packetCommitmentSlot(portId, channelId string, sequence uint64) ([]byte, error) {
-	k, err := packetCommitmentKey(portId, channelId, sequence)
-	if err != nil {
-		return nil, err
-	}
-	return keccak256AbiEncodePacked(k, commitmentSlot)
-}
-
-func packetAcknowledgementCommitmentSlot(portId, channelId string, sequence uint64) ([]byte, error) {
-	k, err := packetAcknowledgementCommitmentKey(portId, channelId, sequence)
-	if err != nil {
-		return nil, err
-	}
-	return keccak256AbiEncodePacked(k, commitmentSlot)
 }

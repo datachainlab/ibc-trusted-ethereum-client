@@ -139,7 +139,7 @@ func (cs ClientState) VerifyClientState(
 
 	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(provingConsensusState.Root.Hash)
-	slot, err := clientStateCommitmentSlot(counterpartyClientIdentifier)
+	slot, err := ClientStateCommitmentSlot(counterpartyClientIdentifier)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func (cs ClientState) VerifyClientConsensusState(
 
 	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(provingConsensusState.Root.Hash)
-	slot, err := consensusStateCommitmentSlot(counterpartyClientIdentifier, consensusHeight.GetRevisionHeight())
+	slot, err := ConsensusStateCommitmentSlot(counterpartyClientIdentifier, consensusHeight.GetRevisionHeight())
 	if err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ func (cs ClientState) VerifyConnectionState(
 
 	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(consensusState.Root.Hash)
-	slot, err := connectionCommitmentSlot(connectionID)
+	slot, err := ConnectionCommitmentSlot(connectionID)
 	if err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func (cs ClientState) VerifyChannelState(
 		return err
 	}
 	root := common.BytesToHash(consensusState.Root.Hash)
-	slot, err := channelCommitmentSlot(portID, channelID)
+	slot, err := ChannelCommitmentSlot(portID, channelID)
 	if err != nil {
 		return err
 	}
@@ -294,7 +294,7 @@ func (cs ClientState) VerifyPacketCommitment(
 		return err
 	}
 	root := common.BytesToHash(consensusState.Root.Hash)
-	slot, err := packetCommitmentSlot(portID, channelID, sequence)
+	slot, err := PacketCommitmentSlot(portID, channelID, sequence)
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func (cs ClientState) VerifyPacketAcknowledgement(
 		return err
 	}
 	root := common.BytesToHash(consensusState.Root.Hash)
-	slot, err := packetAcknowledgementCommitmentSlot(portID, channelID, sequence)
+	slot, err := PacketAcknowledgementCommitmentSlot(portID, channelID, sequence)
 	if err != nil {
 		return err
 	}
@@ -399,7 +399,7 @@ func produceVerificationArgs(
 		return nil, nil, sdkerrors.Wrap(commitmenttypes.ErrInvalidProof, "proof cannot be empty")
 	}
 
-	merkleProof, err = rlpDecode(proof)
+	merkleProof, err = decodeRLP(proof)
 	if err != nil {
 		return nil, nil, sdkerrors.Wrap(commitmenttypes.ErrInvalidProof, "failed to unmarshal proof into commitment merkle proof")
 	}
@@ -412,9 +412,8 @@ func produceVerificationArgs(
 	return merkleProof, consensusState, nil
 }
 
-func rlpDecode(proof []byte) ([][]byte, error) {
+func decodeRLP(proof []byte) ([][]byte, error) {
 	var val [][][]byte
-	// var val [][][]byte
 	if err := rlp.DecodeBytes(proof, &val); err != nil {
 		return nil, err
 	}
