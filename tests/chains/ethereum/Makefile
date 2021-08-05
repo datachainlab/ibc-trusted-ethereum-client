@@ -61,6 +61,6 @@ docker-commit:
 	docker commit --pause=true $(DOCKER_SCAFFOLD_IMAGE_NAME) $(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
 
 .PHONY: docker-rm-scaffold
-docker-rm:
+docker-rm-scaffold:
 	docker container rm -f $(DOCKER_SCAFFOLD_IMAGE_NAME)
 	docker rmi -f $(DOCKER_SCAFFOLD_IMAGE_NAME)
