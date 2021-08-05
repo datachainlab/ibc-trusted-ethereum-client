@@ -1,7 +1,18 @@
+GO ?= go
+LINTER ?= golangci-lint
+
 containerProtoVer=v0.2
 containerProtoImage=tendermintdev/sdk-proto-gen:$(containerProtoVer)
 containerProtoGen=cosmos-sdk-proto-gen-$(containerProtoVer)
 containerProtoFmt=cosmos-sdk-proto-fmt-$(containerProtoVer)
+
+
+.PHONY: lint test
+lint:
+	@${LINTER} run -v --no-config
+
+test:
+	@${GO} test -v ./...
 
 .PHONY: proto-gen proto-format
 proto-gen:

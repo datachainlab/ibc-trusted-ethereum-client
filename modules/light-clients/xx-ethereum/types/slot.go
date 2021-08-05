@@ -26,74 +26,49 @@ const (
 )
 
 func keccak256AbiEncodePacked(data ...interface{}) ([]byte, error) {
-	//bz, err := abiEncodePacked(data)
-	var bz [][]byte
+	// abi.encodePacked
+	var bzs [][]byte
 	for _, v := range data {
+		var bz []byte
 		switch vt := v.(type) {
 		case *big.Int:
-			bz = append(bz, math.U256Bytes(vt))
-		case uint64:
+			bz = math.U256Bytes(vt)
+		case uint64, uint8:
 			b := new(bytes.Buffer)
 			if err := binary.Write(b, binary.BigEndian, vt); err != nil {
 				return nil, err
 			}
-			bz = append(bz, b.Bytes())
-		case uint8:
-			b := new(bytes.Buffer)
-			if err := binary.Write(b, binary.BigEndian, vt); err != nil {
-				return nil, err
-			}
-			bz = append(bz, b.Bytes())
+			bz = b.Bytes()
 		case string:
 			// XXX address may be represented by common.Address
 			// also, no slot uses an address for now
 			if common.IsHexAddress(vt) {
 				vt = strings.TrimPrefix(vt, "0x")
 				if vt == "" || vt == "0" {
-					bz = append(bz, []byte{0})
-				} else {
-					vt = evenLengthHex(vt)
-					decoded, err := hex.DecodeString(vt)
-					if err != nil {
-						return nil, err
-					}
-					bz = append(bz, decoded)
+					bz = []byte{0}
+					break
+				}
+				vt = evenLengthHex(vt)
+				var err error
+				bz, err = hex.DecodeString(vt)
+				if err != nil {
+					return nil, err
 				}
 			} else {
-				bz = append(bz, []byte(vt))
+				bz = []byte(vt)
 			}
+		case common.Address:
+			bz = vt.Bytes()[:]
+		case []byte:
+			bz = common.RightPadBytes(vt, len(vt))
 		default:
 			return nil, fmt.Errorf("unsupported type for abiEncodePacked: %s", reflect.TypeOf(v))
 		}
+		bzs = append(bzs, bz)
 	}
-	return crypto.Keccak256(bz...), nil
-}
 
-func abiEncodePacked(data []interface{}) ([]byte, error) {
-	var res [][]byte
-	for _, v := range data {
-		switch vt := v.(type) {
-		case *big.Int:
-			res = append(res, math.U256Bytes(vt))
-		case uint64:
-			b := new(bytes.Buffer)
-			if err := binary.Write(b, binary.BigEndian, vt); err != nil {
-				return nil, err
-			}
-			res = append(res, b.Bytes())
-		case uint8:
-			b := new(bytes.Buffer)
-			if err := binary.Write(b, binary.BigEndian, vt); err != nil {
-				return nil, err
-			}
-			res = append(res, b.Bytes())
-		case string:
-			res = append(res, []byte(vt))
-		default:
-			return nil, fmt.Errorf("unsupported type for abiEncodePacked: %s", reflect.TypeOf(v))
-		}
-	}
-	return bytes.Join(res, nil), nil
+	// keccak256
+	return crypto.Keccak256(bzs...), nil
 }
 
 func evenLengthHex(v string) string {
@@ -122,11 +97,11 @@ func channelCommitmentKey(portId, channelId string) ([]byte, error) {
 }
 
 func packetCommitmentKey(portId, channelId string, sequence uint64) ([]byte, error) {
-	return keccak256AbiEncodePacked(packetPrefix, portId, "/", channelId)
+	return keccak256AbiEncodePacked(packetPrefix, portId, "/", channelId, "/", sequence)
 }
 
 func packetAcknowledgementCommitmentKey(portId, channelId string, sequence uint64) ([]byte, error) {
-	return keccak256AbiEncodePacked(packetAckPrefix, portId, "/", channelId)
+	return keccak256AbiEncodePacked(packetAckPrefix, portId, "/", channelId, "/", sequence)
 }
 
 // Slot calculator
