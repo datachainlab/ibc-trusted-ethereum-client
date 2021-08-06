@@ -63,15 +63,5 @@ func checkMisbehaviourHeader(
 	if err := checkHeader(cdc, consState, header); err != nil {
 		return err
 	}
-
-	// TODO remove before merged
-	/*
-		chainID := clientState.GetChainID()
-		// If chainID is in revision format, then set revision number of chainID with the revision number
-		// of the misbehaviour header
-		if clienttypes.IsRevisionFormat(chainID) {
-			chainID, _ = clienttypes.SetRevisionNumber(chainID, header.GetHeight().GetRevisionNumber())
-		}
-	*/
 	return nil
 }

@@ -57,8 +57,8 @@ func verifyProof(rootHash common.Hash, key []byte, proof [][]byte) ([]byte, erro
 	proofDB := NewMemDB()
 	// each node is RLP-serialized
 	for _, node := range proof {
-		key := crypto.Keccak256(node)
-		proofDB.Put(key, node)
+		k := crypto.Keccak256(node)
+		proofDB.Put(k, node)
 	}
 	path := crypto.Keccak256(key)
 
