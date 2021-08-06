@@ -33,7 +33,8 @@ func (cs ClientState) CheckHeaderAndUpdateState(
 	if err != nil {
 		return nil, nil, sdkerrors.Wrap(ErrInvalidProof, "failed to unmarshal proof into commitment merkle proof")
 	}
-	root, err := verifyStorageProof(common.BytesToAddress(cs.IbcStoreAddress), common.BytesToHash(smHeader.StateRoot), proof)
+
+	root, err := VerifyEthAccountProof(proof, common.BytesToHash(smHeader.StateRoot), cs.IbcStoreAddress)
 	if err != nil {
 		return nil, nil, sdkerrors.Wrapf(
 			ErrInvalidProof, "failed to verify storage proof")
@@ -41,14 +42,6 @@ func (cs ClientState) CheckHeaderAndUpdateState(
 
 	clientState, consensusState := update(&cs, smHeader, root)
 	return clientState, consensusState, nil
-}
-
-func verifyStorageProof(address common.Address, stateRoot common.Hash, accountStateProof [][]byte) ([]byte, error) {
-	path, err := keccak256AbiEncodePacked(address)
-	if err != nil {
-		return nil, err
-	}
-	return VerifyEthAccountProof(accountStateProof, stateRoot, path)
 }
 
 // checkHeader checks if the Header is valid.
