@@ -412,6 +412,8 @@ func produceVerificationArgs(
 	return merkleProof, consensusState, nil
 }
 
+// decodeRLP decodes the proof according to the IBFT2.0 client proof format implemented by yui-ibc-solidity
+// and formats it for Ethereum's Account/Storage Proof.
 func decodeRLP(proof []byte) ([][]byte, error) {
 	var val [][][]byte
 	if err := rlp.DecodeBytes(proof, &val); err != nil {

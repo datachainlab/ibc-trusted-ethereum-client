@@ -21,8 +21,7 @@ func VerifyEthAccountProof(proof [][]byte, stateRoot common.Hash, addressBytes [
 // It does not verify the account proof against the Ethereum StateHash.
 func VerifyEthStorageProof(proof [][]byte, storageHash common.Hash, key, value []byte) error {
 	var err error
-	var v []byte
-
+	v := []byte{}
 	if len(value) != 0 {
 		v, err = rlp.EncodeToBytes(value)
 		if err != nil {

@@ -2,6 +2,7 @@ package types
 
 import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
 )
 
@@ -27,9 +28,14 @@ func RegisterInterfaces(registry codectypes.InterfaceRegistry) {
 }
 
 // Interface implementation checks.
-var _ codectypes.UnpackInterfacesMessage = &ConsensusState{}
+var _, _ codectypes.UnpackInterfacesMessage = &ConsensusState{}, &Header{}
 
 // UnpackInterfaces implements the UnpackInterfaceMessages.UnpackInterfaces method
 func (cs ConsensusState) UnpackInterfaces(unpacker codectypes.AnyUnpacker) error {
-	return nil
+	return unpacker.UnpackAny(cs.PublicKey, new(cryptotypes.PubKey))
+}
+
+// UnpackInterfaces implements the UnpackInterfaceMessages.UnpackInterfaces method
+func (h Header) UnpackInterfaces(unpacker codectypes.AnyUnpacker) error {
+	return unpacker.UnpackAny(h.NewPublicKey, new(cryptotypes.PubKey))
 }

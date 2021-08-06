@@ -24,7 +24,10 @@ func (cs ClientState) CheckHeaderAndUpdateState(
 		)
 	}
 
-	prevConsState, _ := GetConsensusState(clientStore, cdc, header.GetHeight())
+	prevConsState, err := GetConsensusState(clientStore, cdc, cs.LatestHeight)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := checkHeader(cdc, prevConsState, smHeader); err != nil {
 		return nil, nil, err
 	}

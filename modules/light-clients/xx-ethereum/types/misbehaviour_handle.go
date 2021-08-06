@@ -49,7 +49,9 @@ func (cs ClientState) CheckMisbehaviourAndUpdateState(
 		return nil, sdkerrors.Wrap(err, "verifying Header2 in Misbehaviour failed")
 	}
 
-	cs.FrozenHeight = clienttypes.NewHeight(0, 1)
+	// misbehaviour.ValidateBasic checks that Height1 height is equal to Height2,
+	// so we just use Header1 height
+	cs.FrozenHeight = ethMisbehaviour.Header1.Height
 
 	return &cs, nil
 }

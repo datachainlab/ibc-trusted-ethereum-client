@@ -9,7 +9,7 @@ containerProtoFmt=cosmos-sdk-proto-fmt-$(containerProtoVer)
 
 .PHONY: lint test
 lint:
-	@${LINTER} run -v --no-config
+	@${LINTER} run -v --tests
 
 test:
 	@${GO} test -v ./...
