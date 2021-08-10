@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
-	storageproof "github.com/vocdoni/storage-proofs-eth-go/ethstorageproof"
 )
 
 var (
@@ -53,23 +52,45 @@ type ETHProof struct {
 	StorageProofRLP [][]byte
 }
 
-func Test_VerifyProof_connectionProof(t *testing.T) {
-	var sp storageproof.StorageProof
-	if err := json.Unmarshal([]byte(connectionProofStr), &sp); err != nil {
-		t.Error(err)
-	}
+// storageResult and accountResult are from ethereum/go-ethereum
+type storageResult struct {
+	Key   string       `json:"key"`
+	Value *hexutil.Big `json:"value"`
+	Proof []string     `json:"proof"`
+}
 
-	stateRoot := common.HexToHash(connectionStateRoot)
-	_, err := ethtypes.VerifyEthAccountProof(sp.AccountProof, stateRoot, sp.Address.Bytes())
+type accountResult struct {
+	Address      common.Address  `json:"address"`
+	AccountProof []string        `json:"accountProof"`
+	Balance      *hexutil.Big    `json:"balance"`
+	CodeHash     common.Hash     `json:"codeHash"`
+	Nonce        hexutil.Uint64  `json:"nonce"`
+	StorageHash  common.Hash     `json:"storageHash"`
+	StorageProof []storageResult `json:"storageProof"`
+}
+
+func Test_VerifyProof_connectionProof(t *testing.T) {
+	var ar accountResult
+	err := json.Unmarshal([]byte(connectionProofStr), &ar)
 	assert.NoError(t, err)
 
+	ap, err := encodeRLP(ar.AccountProof)
+	assert.NoError(t, err)
+	sp, err := encodeRLP(ar.StorageProof[0].Proof)
+	assert.NoError(t, err)
+
+	accountProof, err := ethtypes.ExportDecoreRLP(ap)
+	assert.NoError(t, err)
+	stateRoot := common.HexToHash(connectionStateRoot)
+	_, err = ethtypes.VerifyEthAccountProof(accountProof, stateRoot, ar.Address.Bytes())
+	assert.NoError(t, err)
+
+	storageProof, err := ethtypes.ExportDecoreRLP(sp)
+	assert.NoError(t, err)
 	key, err := ethtypes.ConnectionCommitmentSlot(connectionID)
 	assert.NoError(t, err)
-
 	value := hexutil.MustDecode(connectionValue)
-
-	//err = ethtypes.VerifyEthStorageProof(sp.StorageProof[0].Proof, sp.StorageHash, key, sp.StorageProof[0].Value)
-	err = ethtypes.VerifyEthStorageProof(sp.StorageProof[0].Proof, sp.StorageHash, key, value)
+	err = ethtypes.VerifyEthStorageProof(storageProof, ar.StorageHash, key, value)
 	assert.NoError(t, err)
 }
 
