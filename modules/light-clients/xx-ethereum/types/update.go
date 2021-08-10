@@ -17,33 +17,41 @@ func (cs ClientState) CheckHeaderAndUpdateState(
 	ctx sdk.Context, cdc codec.BinaryCodec, clientStore sdk.KVStore,
 	header exported.Header,
 ) (exported.ClientState, exported.ConsensusState, error) {
-	smHeader, ok := header.(*Header)
+	teHeader, ok := header.(*Header)
 	if !ok {
 		return nil, nil, sdkerrors.Wrapf(
 			clienttypes.ErrInvalidHeader, "header type %T, expected  %T", header, &Header{},
 		)
 	}
 
-	prevConsState, err := GetConsensusState(clientStore, cdc, cs.LatestHeight)
+	prevConsState, err := GetConsensusState(clientStore, cdc, cs.GetLatestHeight())
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := checkHeader(cdc, prevConsState, smHeader); err != nil {
+
+	// assert height is not less than the latest height
+	if teHeader.GetHeight().LTE(cs.GetLatestHeight()) {
+		return nil, nil, sdkerrors.Wrapf(
+			clienttypes.ErrInvalidHeader,
+			"header height is less than to the client state latest height (%d < %d)", header.GetHeight(), cs.GetLatestHeight(),
+		)
+	}
+	if err := checkHeader(cdc, prevConsState, teHeader); err != nil {
 		return nil, nil, err
 	}
 
-	proof, err := decodeRLP(smHeader.AccountProof)
+	proof, err := decodeRLP(teHeader.AccountProof)
 	if err != nil {
 		return nil, nil, sdkerrors.Wrap(ErrInvalidProof, "failed to unmarshal proof into commitment merkle proof")
 	}
 
-	root, err := VerifyEthAccountProof(proof, common.BytesToHash(smHeader.StateRoot), cs.IbcStoreAddress)
+	_, err = VerifyEthAccountProof(proof, common.BytesToHash(teHeader.StateRoot), cs.IbcStoreAddress)
 	if err != nil {
 		return nil, nil, sdkerrors.Wrapf(
 			ErrInvalidProof, "failed to verify storage proof")
 	}
 
-	clientState, consensusState := update(&cs, smHeader, root)
+	clientState, consensusState := update(&cs, teHeader, teHeader.StateRoot)
 	return clientState, consensusState, nil
 }
 
@@ -82,9 +90,6 @@ func update(clientState *ClientState, header *Header, root []byte) (*ClientState
 		Timestamp:   header.Timestamp,
 		Root:        types.MerkleRoot{Hash: root},
 	}
-	// TODO
-	if header.GetHeight().GT(clientState.GetLatestHeight()) {
-		clientState.LatestHeight = header.Height
-	}
+	clientState.LatestHeight = header.Height
 	return clientState, consensusState
 }

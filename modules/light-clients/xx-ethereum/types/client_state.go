@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	TrustedEthereum string = "xx-ethereum"
+	TrustedEthereum string = "trusted-ethereum"
 )
 
 // GetChainID returns the chain-id
@@ -148,11 +148,6 @@ func (cs ClientState) VerifyClientState(
 		return sdkerrors.Wrap(clienttypes.ErrInvalidClient, "client state cannot be empty")
 	}
 
-	_, ok := clientState.(*ClientState)
-	if !ok {
-		return sdkerrors.Wrapf(clienttypes.ErrInvalidClient, "invalid client type %T, expected %T", clientState, &ClientState{})
-	}
-
 	bz, err := cdc.MarshalInterface(clientState)
 	if err != nil {
 		return err
@@ -187,11 +182,6 @@ func (cs ClientState) VerifyClientConsensusState(
 
 	if consensusState == nil {
 		return sdkerrors.Wrap(clienttypes.ErrInvalidConsensus, "consensus state cannot be empty")
-	}
-
-	_, ok := consensusState.(*ConsensusState)
-	if !ok {
-		return sdkerrors.Wrapf(clienttypes.ErrInvalidConsensus, "invalid consensus type %T, expected %T", consensusState, &ConsensusState{})
 	}
 
 	bz, err := cdc.MarshalInterface(consensusState)

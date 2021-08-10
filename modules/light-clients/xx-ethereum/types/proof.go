@@ -12,14 +12,12 @@ import (
 // The signature data type must correspond to the public key type. An error is
 // returned if signature verification fails.
 func VerifySignature(pubKey cryptotypes.PubKey, signBytes []byte, signature []byte) error {
-	switch pubKey := pubKey.(type) {
-	case multisig.PubKey:
+	if _, ok := pubKey.(multisig.PubKey); ok {
 		return sdkerrors.Wrapf(ErrSignatureVerificationFailed, "multisig pubkey is not supported")
+	}
 
-	default:
-		if !pubKey.VerifySignature(signBytes, signature) {
-			return ErrSignatureVerificationFailed
-		}
+	if !pubKey.VerifySignature(signBytes, signature) {
+		return ErrSignatureVerificationFailed
 	}
 
 	return nil
