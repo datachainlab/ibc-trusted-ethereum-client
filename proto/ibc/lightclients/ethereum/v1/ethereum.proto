@@ -10,7 +10,7 @@ import "google/protobuf/timestamp.proto";
 import "ibc/core/client/v1/client.proto";
 import "ibc/core/commitment/v1/commitment.proto";
 
-option go_package = "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/xx-ethereum/types";
+option go_package = "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum/types";
 option (gogoproto.goproto_getters_all)  = false;
 
 message ClientState {

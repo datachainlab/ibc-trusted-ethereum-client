@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	ethtypes "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/xx-ethereum/types"
+	ethtypes "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/assert"
