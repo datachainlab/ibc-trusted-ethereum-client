@@ -58,10 +58,6 @@ func (h Header) ValidateBasic() error {
 		return sdkerrors.Wrap(clienttypes.ErrInvalidHeader, "ethereum state root cannot be nil")
 	}
 
-	if h.ParentHash == nil {
-		return sdkerrors.Wrap(clienttypes.ErrInvalidHeader, "ethereum parent hash cannot be nil")
-	}
-
 	if h.Timestamp == 0 {
 		return sdkerrors.Wrap(clienttypes.ErrInvalidHeader, "ethereum timestamp cannot be 0")
 	}

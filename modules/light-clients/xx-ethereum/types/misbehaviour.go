@@ -83,7 +83,6 @@ func (misbehaviour Misbehaviour) ValidateBasic() error {
 	}
 
 	if bytes.Equal(misbehaviour.Header1.AccountProof, misbehaviour.Header2.AccountProof) &&
-		bytes.Equal(misbehaviour.Header1.ParentHash, misbehaviour.Header2.ParentHash) &&
 		bytes.Equal(misbehaviour.Header1.StateRoot, misbehaviour.Header2.StateRoot) &&
 		(misbehaviour.Header1.NewPublicKey == nil || pubkey1.Equals(pubkey2)) &&
 		misbehaviour.Header1.NewDiversifier == misbehaviour.Header2.NewDiversifier {

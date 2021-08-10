@@ -32,7 +32,6 @@ func HeaderSignBytes(
 ) ([]byte, error) {
 	signBytes := &Header{
 		Height:         header.Height,
-		ParentHash:     header.ParentHash,
 		StateRoot:      header.StateRoot,
 		Timestamp:      header.Timestamp,
 		AccountProof:   header.AccountProof,
