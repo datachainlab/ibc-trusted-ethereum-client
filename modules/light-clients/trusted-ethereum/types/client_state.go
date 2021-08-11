@@ -79,8 +79,12 @@ func (cs ClientState) Validate() error {
 		return sdkerrors.Wrap(ErrInvalidChainID, "chain id cannot be empty string")
 	}
 
-	if cs.LatestHeight.RevisionHeight != 0 {
-		return sdkerrors.Wrapf(ErrInvalidHeaderHeight, "revision height must be zero")
+	if cs.LatestHeight.RevisionNumber != 0 {
+		return sdkerrors.Wrapf(ErrInvalidHeaderHeight, "revision number must be zero")
+	}
+
+	if cs.LatestHeight.RevisionHeight == 0 {
+		return sdkerrors.Wrapf(ErrInvalidHeaderHeight, "revision height must not be zero")
 	}
 	return nil
 }
