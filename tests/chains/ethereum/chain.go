@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,10 +12,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/types"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	"github.com/cosmos/cosmos-sdk/types/module"
+	"github.com/cosmos/ibc-go/modules/apps/transfer"
+	ibc "github.com/cosmos/ibc-go/modules/core"
 	clienttypes "github.com/cosmos/ibc-go/modules/core/02-client/types"
 	tmchanneltypes "github.com/cosmos/ibc-go/modules/core/04-channel/types"
+	commitmenttypes "github.com/cosmos/ibc-go/modules/core/23-commitment/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
 	ibctmtypes "github.com/cosmos/ibc-go/modules/light-clients/07-tendermint/types"
+	mockclient "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock"
 	mocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -29,6 +36,8 @@ import (
 	connectiontypes "github.com/hyperledger-labs/yui-ibc-solidity/pkg/ibc/connection"
 	"github.com/stretchr/testify/require"
 
+	trustedethereum "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum"
+	trustedethereumtypes "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum/types"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/client"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/contract/ibchandler"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/contract/ibchost"
@@ -37,6 +46,7 @@ import (
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/contract/ics20transferbank"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/contract/simpletoken"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum/pkg/wallet"
+	ibcmock "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/mock"
 	ibctestingtypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
@@ -65,6 +75,14 @@ func init() {
 var _ ibctestingtypes.MockProver = (*TestChain)(nil)
 var _ ibctestingtypes.TestChainI = (*TestChain)(nil)
 
+var moduleBasics = []module.AppModuleBasic{
+	ibc.AppModuleBasic{},
+	transfer.AppModuleBasic{},
+	ibcmock.AppModuleBasic{},
+	mockclient.AppModuleBasic{},
+	trustedethereum.AppModuleBasic{},
+}
+
 type TestChain struct {
 	t *testing.T
 
@@ -88,6 +106,8 @@ type TestChain struct {
 
 	// State
 	LastContractState map[string]client.ContractState
+
+	Codec codec.BinaryCodec
 }
 
 type ContractConfig interface {
@@ -128,6 +148,13 @@ func NewChain(t *testing.T, chainClient client.ChainClient, config ContractConfi
 		t.Error(err)
 	}
 
+	interfaceRegistry := types.NewInterfaceRegistry()
+	marshaler := codec.NewProtoCodec(interfaceRegistry)
+
+	for _, mb := range moduleBasics {
+		mb.RegisterInterfaces(interfaceRegistry)
+	}
+
 	return &TestChain{
 		t:                 t,
 		chainClient:       chainClient,
@@ -142,6 +169,7 @@ func NewChain(t *testing.T, chainClient client.ChainClient, config ContractConfi
 		SimpleToken:   *simpletoken,
 		ICS20Transfer: *ics20transfer,
 		ICS20Bank:     *ics20bank,
+		Codec:         marshaler,
 	}
 }
 
@@ -197,31 +225,39 @@ func (chain *TestChain) GetSenderAddress() string {
 
 func (chain *TestChain) NextBlock() {
 	_, _ = chain.chainClient.MineBlock(time.Now().UTC())
-	for _, clientType := range []string{mocktypes.Mock} {
+	for _, clientType := range []string{
+		trustedethereumtypes.TrustedEthereum,
+		mocktypes.Mock,
+	} {
 		chain.updateHeader(clientType)
 	}
 }
 
-func (chain *TestChain) GetClientState(clientID string) ([]byte, bool, error) {
-	return chain.IBCHost.GetClientState(
+func (chain *TestChain) GetClientStateBytes(clientID string) []byte {
+	bz, found, err := chain.IBCHost.GetClientState(
 		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex),
 		clientID,
 	)
+	require.NoError(chain.t, err)
+	require.True(chain.t, found)
+
+	return bz
 }
 
 func (chain *TestChain) GetLatestHeight(clientID string, clientType string) (height exported.Height) {
-	var rh uint64
 	switch clientType {
+	case trustedethereumtypes.TrustedEthereum:
+		height = chain.GetTrustedEthClientState(clientID).LatestHeight
 	case mocktypes.Mock:
-		rh = chain.GetMockClientState(clientID).LatestHeight
+		height = clienttypes.Height{
+			RevisionNumber: 0,
+			RevisionHeight: chain.GetMockClientState(clientID).LatestHeight,
+		}
 	default:
 		panic(fmt.Errorf("unknown chainClient type: '%v'", clientType))
 	}
 
-	return clienttypes.Height{
-		RevisionNumber: 0,
-		RevisionHeight: rh,
-	}
+	return
 }
 
 func (chain *TestChain) updateHeader(clientType string) {
@@ -265,18 +301,33 @@ func (chain *TestChain) GetChannel(portID, channelID string) (ibchost.ChannelDat
 	)
 }
 
-func (chain *TestChain) GetMockClientState(clientID string) *mocktypes.ClientState {
-	ctx := context.Background()
-	bz, found, err := chain.IBCHost.GetClientState(chain.CallOpts(ctx, ibctestingtypes.RelayerKeyIndex), clientID)
-	if err != nil {
+func (chain *TestChain) GetTrustedEthClientState(clientID string) *trustedethereumtypes.ClientState {
+	bz := chain.GetClientStateBytes(clientID)
+
+	var any pbtypes.Any
+	var cs trustedethereumtypes.ClientState
+
+	if err := chain.Codec.Unmarshal(bz, &any); err != nil {
 		require.NoError(chain.t, err)
-	} else if !found {
-		panic("clientState not found")
+	} else if err := chain.Codec.Unmarshal(any.Value, &cs); err != nil {
+		require.NoError(chain.t, err)
 	}
+
+	return &cs
+}
+
+func (chain *TestChain) GetMockClientState(clientID string) *mocktypes.ClientState {
+	bz := chain.GetClientStateBytes(clientID)
+
+	var any pbtypes.Any
 	var cs mocktypes.ClientState
-	if err := UnmarshalWithAny(bz, &cs); err != nil {
-		panic(err)
+
+	if err := chain.Codec.Unmarshal(bz, &any); err != nil {
+		require.NoError(chain.t, err)
+	} else if err := chain.Codec.Unmarshal(any.Value, &cs); err != nil {
+		require.NoError(chain.t, err)
 	}
+
 	return &cs
 }
 
@@ -294,8 +345,58 @@ func (chain *TestChain) GetContractState(
 	)
 }
 
-func (chain *TestChain) ConstructTendermintMsgCreateClient(trustLevel ibctmtypes.Fraction, trustingPeriod, unbondingPeriod, maxClockDrift time.Duration, upgradePath []string, allowUpdateAfterExpiry, allowUpdateAfterMisbehaviour bool) ibctestingtypes.MsgCreateClient {
-	panic("implement me")
+func (chain *TestChain) ConstructTrustedEthereumMsgCreateClient(
+	publicKey cryptotypes.PubKey,
+	diversifier string,
+) ibctestingtypes.MsgCreateClient {
+	clientType := trustedethereumtypes.TrustedEthereum
+	lastHeader := chain.LastHeader(clientType)
+	clientState := trustedethereumtypes.ClientState{
+		ChainId:         chain.chainID,
+		IbcStoreAddress: chain.ContractConfig.GetIBCHostAddress().Bytes(),
+		LatestHeight: clienttypes.Height{
+			RevisionNumber: 0,
+			RevisionHeight: lastHeader.Number.Uint64(),
+		},
+		FrozenHeight: clienttypes.Height{
+			RevisionNumber: 0,
+			RevisionHeight: 0,
+		},
+	}
+
+	pubkey, err := types.NewAnyWithValue(publicKey)
+	require.NoError(chain.t, err)
+
+	consensusState := trustedethereumtypes.ConsensusState{
+		Timestamp:   lastHeader.Time,
+		Root:        commitmenttypes.MerkleRoot{Hash: lastHeader.Root.Bytes()},
+		PublicKey:   pubkey,
+		Diversifier: diversifier,
+	}
+
+	clientStateBytes, err := chain.Codec.MarshalInterface(&clientState)
+	if err != nil {
+		panic(err)
+	}
+	consensusStateBytes, err := chain.Codec.MarshalInterface(&consensusState)
+	if err != nil {
+		panic(err)
+	}
+
+	return ibctestingtypes.MsgCreateClient{
+		ClientType:          clientType,
+		Height:              clientState.LatestHeight,
+		ClientStateBytes:    clientStateBytes,
+		ConsensusStateBytes: consensusStateBytes,
+	}
+}
+
+func (chain *TestChain) ConstructTendermintMsgCreateClient(
+	trustLevel ibctmtypes.Fraction,
+	trustingPeriod, unbondingPeriod, maxClockDrift time.Duration,
+	upgradePath []string, allowUpdateAfterExpiry, allowUpdateAfterMisbehaviour bool,
+) ibctestingtypes.MsgCreateClient {
+	panic("not implemented")
 }
 
 func (chain *TestChain) ConstructMockMsgCreateClient() ibctestingtypes.MsgCreateClient {
@@ -307,11 +408,11 @@ func (chain *TestChain) ConstructMockMsgCreateClient() ibctestingtypes.MsgCreate
 	consensusState := mocktypes.ConsensusState{
 		Timestamp: chain.LastHeader(clientType).Time,
 	}
-	clientStateBytes, err := MarshalWithAny(&clientState)
+	clientStateBytes, err := chain.Codec.MarshalInterface(&clientState)
 	if err != nil {
 		panic(err)
 	}
-	consensusStateBytes, err := MarshalWithAny(&consensusState)
+	consensusStateBytes, err := chain.Codec.MarshalInterface(&consensusState)
 	if err != nil {
 		panic(err)
 	}
@@ -339,8 +440,50 @@ func (chain *TestChain) CreateClient(ctx context.Context, msg ibctestingtypes.Ms
 	return chain.GetLastGeneratedClientID(ctx)
 }
 
-func (chain *TestChain) ConstructTendermintUpdateTMClientHeader(counterparty ibctestingtypes.TestChainI, clientID string) ibctestingtypes.MsgUpdateClient {
-	panic("implement me")
+func (chain *TestChain) ConstructTendermintUpdateTMClientHeader(
+	counterparty ibctestingtypes.TestChainI, clientID string,
+) ibctestingtypes.MsgUpdateClient {
+	panic("not implemented")
+}
+
+func (chain *TestChain) ConstructTrustedEthereumMsgUpdateClient(
+	clientID string,
+	privateKey cryptotypes.PrivKey,
+	divisifier string,
+) ibctestingtypes.MsgUpdateClient {
+	cs := chain.LastContractState[trustedethereumtypes.TrustedEthereum].(client.ETHContractState)
+	pubKey, err := types.NewAnyWithValue(privateKey.PubKey())
+	require.NoError(chain.t, err)
+
+	header := trustedethereumtypes.Header{
+		Height: clienttypes.Height{
+			RevisionNumber: 0,
+			RevisionHeight: cs.Header().Number.Uint64(),
+		},
+		StateRoot:      cs.Header().Root.Bytes(),
+		Timestamp:      cs.Header().Time,
+		AccountProof:   cs.ETHProof().AccountProofRLP,
+		Signature:      nil,
+		NewPublicKey:   pubKey,
+		NewDiversifier: divisifier,
+	}
+
+	sigBytes, err := trustedethereumtypes.HeaderSignBytes(chain.Codec, &header)
+	require.NoError(chain.t, err)
+
+	sig, err := privateKey.Sign(sigBytes)
+	require.NoError(chain.t, err)
+
+	header.Signature = sig
+
+	bz, err := chain.Codec.MarshalInterface(&header)
+	if err != nil {
+		panic(err)
+	}
+	return ibctestingtypes.MsgUpdateClient{
+		ClientID: clientID,
+		Header:   bz,
+	}
 }
 
 func (chain *TestChain) ConstructMockMsgUpdateClient(clientID string) ibctestingtypes.MsgUpdateClient {
@@ -349,7 +492,7 @@ func (chain *TestChain) ConstructMockMsgUpdateClient(clientID string) ibctesting
 		Height:    cs.Header().Number.Uint64(),
 		Timestamp: cs.Header().Time,
 	}
-	bz, err := MarshalWithAny(&header)
+	bz, err := chain.Codec.MarshalInterface(&header)
 	if err != nil {
 		panic(err)
 	}
@@ -591,21 +734,15 @@ func (chain *TestChain) HandlePacketAcknowledgement(
 	return err
 }
 
-func (chain *TestChain) GetLastGeneratedClientID(
-	ctx context.Context,
-) (string, error) {
+func (chain *TestChain) GetLastGeneratedClientID(ctx context.Context) (string, error) {
 	return chain.getLastID(ctx, abiGeneratedClientIdentifier)
 }
 
-func (chain *TestChain) GetLastGeneratedConnectionID(
-	ctx context.Context,
-) (string, error) {
+func (chain *TestChain) GetLastGeneratedConnectionID(ctx context.Context) (string, error) {
 	return chain.getLastID(ctx, abiGeneratedConnectionIdentifier)
 }
 
-func (chain *TestChain) GetLastGeneratedChannelID(
-	ctx context.Context,
-) (string, error) {
+func (chain *TestChain) GetLastGeneratedChannelID(ctx context.Context) (string, error) {
 	return chain.getLastID(ctx, abiGeneratedChannelIdentifier)
 }
 
@@ -651,7 +788,7 @@ func (chain *TestChain) FindPacket(
 	sourcePortID string,
 	sourceChannel string,
 	sequence uint64,
-) (*tmchanneltypes.Packet, error) {
+) (exported.PacketI, error) {
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(0),
 		Addresses: []common.Address{
@@ -717,87 +854,67 @@ func packetToCallData(packet exported.PacketI) ibchandler.PacketData {
 	}
 }
 
-func PackAny(msg proto.Message) (*pbtypes.Any, error) {
-	var any pbtypes.Any
-	any.TypeUrl = "/" + proto.MessageName(msg)
-
-	bz, err := proto.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-	any.Value = bz
-	return &any, nil
-}
-
-func UnpackAny(bz []byte) (*pbtypes.Any, error) {
-	var any pbtypes.Any
-	if err := proto.Unmarshal(bz, &any); err != nil {
-		return nil, err
-	}
-	return &any, nil
-}
-
-func MarshalWithAny(msg proto.Message) ([]byte, error) {
-	any, err := PackAny(msg)
-	if err != nil {
-		return nil, err
-	}
-	return proto.Marshal(any)
-}
-
-func UnmarshalWithAny(bz []byte, msg proto.Message) error {
-	any, err := UnpackAny(bz)
-	if err != nil {
-		return err
-	}
-	if t := "/" + proto.MessageName(msg); any.TypeUrl != t {
-		return fmt.Errorf("expected %v, but got %v", t, any.TypeUrl)
-	}
-	return proto.Unmarshal(any.Value, msg)
-}
-
 // Slot calculator
 
 func (chain *TestChain) ClientStateCommitmentKey(clientID string) []byte {
-	key, err := chain.IBCIdentifier.ClientStateCommitmentSlot(chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex), clientID)
+	key, err := chain.IBCIdentifier.ClientStateCommitmentSlot(
+		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex), clientID,
+	)
 	require.NoError(chain.t, err)
 	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
 func (chain *TestChain) ConsensusStateCommitmentKey(clientID string, height exported.Height) []byte {
 	key, err := chain.IBCIdentifier.ConsensusStateCommitmentSlot(
-		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex), clientID, height.GetRevisionHeight(),
+		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex),
+		clientID, height.GetRevisionHeight(),
 	)
 	require.NoError(chain.t, err)
 	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
 func (chain *TestChain) ConnectionStateCommitmentKey(connectionID string) []byte {
-	key, err := chain.IBCIdentifier.ConnectionCommitmentSlot(chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex), connectionID)
+	key, err := chain.IBCIdentifier.ConnectionCommitmentSlot(
+		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex),
+		connectionID,
+	)
 	require.NoError(chain.t, err)
 	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
 func (chain *TestChain) ChannelStateCommitmentKey(portID, channelID string) []byte {
-	key, err := chain.IBCIdentifier.ChannelCommitmentSlot(chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex), portID, channelID)
+	key, err := chain.IBCIdentifier.ChannelCommitmentSlot(
+		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex),
+		portID, channelID,
+	)
 	require.NoError(chain.t, err)
 	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
 func (chain *TestChain) PacketCommitmentKey(portID, channelID string, sequence uint64) []byte {
-	key, err := chain.IBCIdentifier.PacketCommitmentSlot(chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex), portID, channelID, sequence)
+	key, err := chain.IBCIdentifier.PacketCommitmentSlot(
+		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex),
+		portID, channelID, sequence,
+	)
 	require.NoError(chain.t, err)
 	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
 func (chain *TestChain) PacketAcknowledgementCommitmentKey(portID, channelID string, sequence uint64) []byte {
-	key, err := chain.IBCIdentifier.PacketAcknowledgementCommitmentSlot(chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex), portID, channelID, sequence)
+	key, err := chain.IBCIdentifier.PacketAcknowledgementCommitmentSlot(
+		chain.CallOpts(context.Background(), ibctestingtypes.RelayerKeyIndex),
+		portID, channelID, sequence,
+	)
 	require.NoError(chain.t, err)
 	return []byte("0x" + hex.EncodeToString(key[:]))
 }
 
 // Querier
-func (chain *TestChain) QueryProofAtHeight(storageKeyBytes []byte, height exported.Height, clientType string) (*ibctestingtypes.Proof, error) {
+func (chain *TestChain) QueryProofAtHeight(
+	storageKeyBytes []byte,
+	height exported.Height,
+	clientType string,
+) (*ibctestingtypes.Proof, error) {
 	storageKey := string(storageKeyBytes)
 	if !strings.HasPrefix(storageKey, "0x") {
 		return nil, fmt.Errorf("storageKey must be hex string")
@@ -871,12 +988,12 @@ func (chain *TestChain) MockChannelProof(portID string, channelID string, proof 
 }
 
 func (chain *TestChain) MockPacketProof(packet exported.PacketI, proof *ibctestingtypes.Proof) (*ibctestingtypes.Proof, error) {
-	proof.Data = commitPacket(packet)
+	proof.Data = tmchanneltypes.CommitPacket(chain.Codec, packet)
 	return proof, nil
 }
 
 func (chain *TestChain) MockAcknowledgementProof(ack []byte, proof *ibctestingtypes.Proof) (*ibctestingtypes.Proof, error) {
-	proof.Data = commitAcknowledgement(ack)
+	proof.Data = tmchanneltypes.CommitAcknowledgement(ack)
 	return proof, nil
 }
 
@@ -907,39 +1024,4 @@ func channelToPB(ch ibchost.ChannelData) *channeltypes.Channel {
 		ConnectionHops: ch.ConnectionHops,
 		Version:        ch.Version,
 	}
-}
-
-// uint64ToBigEndian - marshals uint64 to a bigendian byte slice so it can be sorted
-func uint64ToBigEndian(i uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, i)
-	return b
-}
-
-// commitPacket returns the packet commitment bytes. The commitment consists of:
-// sha256_hash(timeout_timestamp + timeout_height.RevisionNumber + timeout_height.RevisionHeight + sha256_hash(data))
-// from a given packet. This results in a fixed length preimage.
-// NOTE: uint64ToBigEndian sets the uint64 to a slice of length 8.
-func commitPacket(packet exported.PacketI) []byte {
-	timeoutHeight := packet.GetTimeoutHeight()
-
-	buf := uint64ToBigEndian(packet.GetTimeoutTimestamp())
-
-	revisionNumber := uint64ToBigEndian(timeoutHeight.GetRevisionNumber())
-	buf = append(buf, revisionNumber...)
-
-	revisionHeight := uint64ToBigEndian(timeoutHeight.GetRevisionHeight())
-	buf = append(buf, revisionHeight...)
-
-	dataHash := sha256.Sum256(packet.GetData())
-	buf = append(buf, dataHash[:]...)
-
-	hash := sha256.Sum256(buf)
-	return hash[:]
-}
-
-// commitAcknowledgement returns the hash of commitment bytes
-func commitAcknowledgement(data []byte) []byte {
-	hash := sha256.Sum256(data)
-	return hash[:]
 }

@@ -27,6 +27,7 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 	dbm "github.com/tendermint/tm-db"
 
+	trustedethereumtypes "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum/types"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp"
 )
 
@@ -68,7 +69,11 @@ func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs 
 	genesisState[authtypes.ModuleName] = app.AppCodec().MustMarshalJSON(authGenesis)
 
 	ibcGenesisState := ibctypes.DefaultGenesisState()
-	ibcGenesisState.ClientGenesis.Params.AllowedClients = append(ibcGenesisState.ClientGenesis.Params.AllowedClients, mockclienttypes.Mock)
+	ibcGenesisState.ClientGenesis.Params.AllowedClients = append(
+		ibcGenesisState.ClientGenesis.Params.AllowedClients,
+		mockclienttypes.Mock,
+		trustedethereumtypes.TrustedEthereum,
+	)
 	genesisState[host.ModuleName] = app.AppCodec().MustMarshalJSON(ibcGenesisState)
 
 	validators := make([]stakingtypes.Validator, 0, len(valSet.Validators))
