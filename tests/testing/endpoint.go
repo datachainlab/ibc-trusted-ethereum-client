@@ -9,6 +9,7 @@ import (
 	mocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 	"github.com/stretchr/testify/require"
 
+	trustedethereumtypes "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum/types"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/ethereum"
 	ibctestingtypes "github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
@@ -81,6 +82,14 @@ func (endpoint *Endpoint) CreateClient(ctx context.Context) (err error) {
 			tmConfig.TrustLevel, tmConfig.TrustingPeriod, tmConfig.UnbondingPeriod, tmConfig.MaxClockDrift,
 			ibctestingtypes.UpgradePath, tmConfig.AllowUpdateAfterExpiry, tmConfig.AllowUpdateAfterMisbehaviour,
 		)
+	case trustedethereumtypes.TrustedEthereum:
+		cfg, ok := endpoint.ClientConfig.(*TrustedEthereumConfig)
+		require.True(endpoint.Chain.T(), ok)
+
+		msg = endpoint.Counterparty.Chain.ConstructTrustedEthereumMsgCreateClient(
+			cfg.PrivateKey.PubKey(),
+			cfg.Diversifier,
+		)
 	default:
 		err = fmt.Errorf("client type %s is not supported", endpoint.ClientConfig.GetClientType())
 	}
@@ -108,6 +117,13 @@ func (endpoint *Endpoint) UpdateClient(ctx context.Context) (err error) {
 		msg = endpoint.Counterparty.Chain.ConstructMockMsgUpdateClient(endpoint.ClientID)
 	case exported.Tendermint:
 		msg = endpoint.Counterparty.Chain.ConstructTendermintUpdateTMClientHeader(endpoint.Chain, endpoint.ClientID)
+	case trustedethereumtypes.TrustedEthereum:
+		cfg, ok := endpoint.ClientConfig.(*TrustedEthereumConfig)
+		require.True(endpoint.Chain.T(), ok)
+
+		msg = endpoint.Counterparty.Chain.ConstructTrustedEthereumMsgUpdateClient(
+			endpoint.ClientID, cfg.PrivateKey, cfg.Diversifier,
+		)
 	default:
 		err = fmt.Errorf("client type %s is not supported", endpoint.ClientConfig.GetClientType())
 	}
@@ -354,9 +370,7 @@ func (endpoint *Endpoint) QueryConnectionHandshakeProof() (
 }
 
 func (endpoint *Endpoint) QueryClientProof() ([]byte, *ibctestingtypes.Proof) {
-	cs, found, err := endpoint.Chain.GetClientState(endpoint.ClientID)
-	require.True(endpoint.Chain.T(), found)
-	require.NoError(endpoint.Chain.T(), err)
+	cs := endpoint.Chain.GetClientStateBytes(endpoint.ClientID)
 
 	clientKey := endpoint.Chain.ClientStateCommitmentKey(endpoint.ClientID)
 	proof := endpoint.QueryProof(clientKey)
@@ -480,7 +494,7 @@ func (endpoint *Endpoint) QueryProofAtHeight(key []byte, height exported.Height)
 	proof, err := endpoint.Chain.QueryProofAtHeight(
 		key,
 		height,
-		endpoint.ClientConfig.GetClientType(),
+		endpoint.Counterparty.ClientConfig.GetClientType(),
 	)
 	require.NoError(endpoint.Chain.T(), err)
 

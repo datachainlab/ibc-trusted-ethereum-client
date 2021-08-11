@@ -14,6 +14,8 @@ import (
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
+const mnemonicPhrase = "math razor capable expose worth grape metal sunset metal sudden usage scheme"
+
 /*
 NOTE: This test is intended to be run on ganache. Therefore, we are using MockClient instead of IBFT2Client.
 */
@@ -34,10 +36,24 @@ func (suite *TM2EthTestSuite) SetupTest() {
 	suite.coordinator = ibctesting.NewCoordinator(suite.T(), suite.chainA, suite.chainB)
 }
 
-func (suite *TM2EthTestSuite) TestChannel() {
+func NewTransferPath(chainA, chainB types.TestChainI) *ibctesting.Path {
+	path := ibctesting.NewPath(chainA, chainB)
+	return path
+}
+
+func (suite *TM2EthTestSuite) TestChannelTM2Eth() {
 	ctx := context.Background()
 
 	path := NewTransferPath(suite.chainA, suite.chainB)
+	path.EndpointA.ClientConfig = ibctesting.NewTrustedEthereumConfig("chainA-chainB")
+	suite.coordinator.Setup(ctx, path)
+}
+
+func (suite *TM2EthTestSuite) TestChannelEth2TM() {
+	ctx := context.Background()
+
+	path := NewTransferPath(suite.chainB, suite.chainA)
+	path.EndpointB.ClientConfig = ibctesting.NewTrustedEthereumConfig("chainB-chainA")
 	suite.coordinator.Setup(ctx, path)
 }
 

@@ -94,6 +94,7 @@ import (
 	ibckeeper "github.com/cosmos/ibc-go/modules/core/keeper"
 	mockclient "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock"
 
+	ethereum "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum"
 	ibcmock "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/mock"
 	simappparams "github.com/datachainlab/ibc-trusted-ethereum-client/tests/chains/tendermint/simapp/params"
 
@@ -134,6 +135,7 @@ var (
 		authzmodule.AppModuleBasic{},
 		vesting.AppModuleBasic{},
 		mockclient.AppModuleBasic{},
+		ethereum.AppModuleBasic{},
 	)
 
 	// module account permissions
@@ -299,7 +301,7 @@ func NewSimApp(
 	ibcKeeper := ibckeeper.NewKeeper(
 		appCodec, keys[ibchost.StoreKey], app.GetSubspace(ibchost.ModuleName), app.StakingKeeper, app.UpgradeKeeper, scopedIBCKeeper,
 	)
-	app.IBCKeeper = overrideIBCClientKeeper(*ibcKeeper, appCodec, keys[ibchost.StoreKey], app.GetSubspace(ibchost.ModuleName))
+	app.IBCKeeper = overrideIBCClientKeeper(*ibcKeeper, appCodec, keys[ibchost.StoreKey], app.GetSubspace(ibchost.ModuleName), app.StakingKeeper)
 
 	app.AuthzKeeper = authzkeeper.NewKeeper(keys[authzkeeper.StoreKey], appCodec, app.BaseApp.MsgServiceRouter())
 

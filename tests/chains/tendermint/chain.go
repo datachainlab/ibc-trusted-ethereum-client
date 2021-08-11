@@ -215,6 +215,13 @@ func (chain *TestChain) ConstructMockMsgCreateClient() ibctestingtypes.MsgCreate
 	}
 }
 
+func (chain *TestChain) ConstructTrustedEthereumMsgCreateClient(
+	publicKey cryptotypes.PubKey,
+	diversifier string,
+) ibctestingtypes.MsgCreateClient {
+	panic("not implemented")
+}
+
 func (chain *TestChain) CreateClient(ctx context.Context, msg ibctestingtypes.MsgCreateClient) (string, error) {
 	clientState := clienttypes.MustUnmarshalClientState(chain.Codec, msg.ClientStateBytes)
 	consensusState := clienttypes.MustUnmarshalConsensusState(chain.Codec, msg.ConsensusStateBytes)
@@ -262,6 +269,14 @@ func (chain *TestChain) ConstructMockMsgUpdateClient(clientID string) ibctesting
 		ClientID: clientID,
 		Header:   clienttypes.MustMarshalHeader(chain.Codec, header),
 	}
+}
+
+func (chain *TestChain) ConstructTrustedEthereumMsgUpdateClient(
+	clientID string,
+	privateKey cryptotypes.PrivKey,
+	divisifier string,
+) ibctestingtypes.MsgUpdateClient {
+	panic("not implemented")
 }
 
 func (chain *TestChain) UpdateClient(ctx context.Context, msg ibctestingtypes.MsgUpdateClient) error {
@@ -541,18 +556,16 @@ func (chain *TestChain) SendMsgs(msgs ...sdk.Msg) (*sdk.Result, error) {
 	return r, nil
 }
 
-// GetClientState retrieves the client state for the provided clientID. The client is
+// GetClientStateBytes retrieves the client state for the provided clientID. The client is
 // expected to exist otherwise testing will fail.
-func (chain *TestChain) GetClientState(clientID string) ([]byte, bool, error) {
+func (chain *TestChain) GetClientStateBytes(clientID string) []byte {
 	clientState, found := chain.getClientState(clientID)
 	require.True(chain.t, found)
 
 	bz, err := chain.Codec.MarshalInterface(clientState)
-	if err != nil {
-		return nil, false, err
-	}
+	require.NoError(chain.t, err)
 
-	return bz, true, nil
+	return bz
 }
 
 func (chain *TestChain) getClientState(clientID string) (exported.ClientState, bool) {
