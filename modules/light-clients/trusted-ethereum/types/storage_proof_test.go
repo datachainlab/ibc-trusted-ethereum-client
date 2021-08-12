@@ -43,8 +43,7 @@ var (
   ]
 }
 `
-	connectionStorageHash = "0xf70348e0dd46c70eee5e8486170c7e7cb89854652a34f8de1a68824ffa68b74f"
-	connectionValue       = "0xa3f866c2f0bceb2f1e14e5e7e4837e8bcab47361e8748733992f345f9172ade2"
+	connectionValue = "0xa3f866c2f0bceb2f1e14e5e7e4837e8bcab47361e8748733992f345f9172ade2"
 )
 
 type ETHProof struct {
@@ -118,7 +117,9 @@ func Test_VerifyProof_ETHProof_connectionProof(t *testing.T) {
 	assert.NoError(t, err)
 	stateRoot := common.HexToHash(connectionStateRoot)
 	address := common.HexToAddress(ibcHostAddress)
-	_, err = ethtypes.VerifyEthAccountProof(accountProof, stateRoot, address.Bytes())
+	accountRLP, err := ethtypes.VerifyEthAccountProof(accountProof, stateRoot, address.Bytes())
+	assert.NoError(t, err)
+	storageHash, err := ethtypes.ExportDecodeStorageHash(accountRLP)
 	assert.NoError(t, err)
 
 	storageProof, err := ethtypes.ExportDecoreRLP(ethProof.StorageProofRLP[0])
@@ -126,8 +127,7 @@ func Test_VerifyProof_ETHProof_connectionProof(t *testing.T) {
 	key, err := ethtypes.ConnectionCommitmentSlot(connectionID)
 	assert.NoError(t, err)
 	value := hexutil.MustDecode(connectionValue)
-	storageHash := common.HexToHash(connectionStorageHash)
-	err = ethtypes.VerifyEthStorageProof(storageProof, storageHash, key, value)
+	err = ethtypes.VerifyEthStorageProof(storageProof, common.BytesToHash(storageHash), key, value)
 	assert.NoError(t, err)
 }
 

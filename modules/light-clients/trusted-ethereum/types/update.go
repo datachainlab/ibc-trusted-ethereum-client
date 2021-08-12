@@ -8,7 +8,10 @@ import (
 	"github.com/cosmos/ibc-go/modules/core/23-commitment/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 )
+
+const AccountStorageRootIndex = 2
 
 // CheckHeaderAndUpdateState checks if the provided header is valid and updates
 // the consensus state if appropriate. It returns an error if:
@@ -45,14 +48,30 @@ func (cs ClientState) CheckHeaderAndUpdateState(
 		return nil, nil, sdkerrors.Wrap(ErrInvalidProof, "failed to unmarshal proof into commitment merkle proof")
 	}
 
-	_, err = VerifyEthAccountProof(proof, common.BytesToHash(teHeader.StateRoot), cs.IbcStoreAddress)
+	accountRLP, err := VerifyEthAccountProof(proof, common.BytesToHash(teHeader.StateRoot), cs.IbcStoreAddress)
 	if err != nil {
-		return nil, nil, sdkerrors.Wrapf(
+		return nil, nil, sdkerrors.Wrap(
 			ErrInvalidProof, "failed to verify storage proof")
 	}
-
-	clientState, consensusState := update(&cs, teHeader, teHeader.StateRoot)
+	storageHash, err := decodeStorageHash(accountRLP)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientState, consensusState := update(&cs, teHeader, storageHash)
 	return clientState, consensusState, nil
+}
+
+func decodeStorageHash(accountRLP []byte) ([]byte, error) {
+	var account [][]byte
+	if err := rlp.DecodeBytes(accountRLP, &account); err != nil {
+		return nil, sdkerrors.Wrap(
+			ErrInvalidProof, "failed to decode account")
+	}
+	if len(account) <= AccountStorageRootIndex {
+		return nil, sdkerrors.Wrap(
+			ErrInvalidProof, "invalid decoded account")
+	}
+	return account[AccountStorageRootIndex], nil
 }
 
 // checkHeader checks if the Header is valid.
@@ -83,12 +102,12 @@ func checkHeader(cdc codec.BinaryCodec, consState *ConsensusState, header *Heade
 }
 
 // update the consensus state to the new public key and an incremented revision number
-func update(clientState *ClientState, header *Header, root []byte) (*ClientState, *ConsensusState) {
+func update(clientState *ClientState, header *Header, storageHash []byte) (*ClientState, *ConsensusState) {
 	consensusState := &ConsensusState{
 		PublicKey:   header.NewPublicKey,
 		Diversifier: header.NewDiversifier,
 		Timestamp:   header.Timestamp,
-		Root:        types.MerkleRoot{Hash: root},
+		Root:        types.MerkleRoot{Hash: storageHash},
 	}
 	clientState.LatestHeight = header.Height
 	return clientState, consensusState

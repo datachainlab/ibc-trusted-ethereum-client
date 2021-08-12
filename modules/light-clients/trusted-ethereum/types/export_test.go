@@ -5,4 +5,5 @@ package types
 var (
 	ExportKeccak256AbiEncodePacked = keccak256AbiEncodePacked
 	ExportDecoreRLP                = decodeRLP
+	ExportDecodeStorageHash        = decodeStorageHash
 )
