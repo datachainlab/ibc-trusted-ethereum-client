@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
 	ibctmtypes "github.com/cosmos/ibc-go/modules/light-clients/07-tendermint/types"
 )
@@ -20,7 +21,7 @@ type TestChainI interface {
 
 	NextBlock()
 
-	GetClientState(counterpartyClientID string) ([]byte, bool, error)
+	GetClientStateBytes(counterpartyClientID string) []byte
 	GetLatestHeight(counterpartyClientID string, clientType string) exported.Height
 
 	ConstructTendermintMsgCreateClient(
@@ -28,11 +29,13 @@ type TestChainI interface {
 		trustingPeriod, unbondingPeriod, maxClockDrift time.Duration,
 		upgradePath []string, allowUpdateAfterExpiry, allowUpdateAfterMisbehaviour bool) MsgCreateClient
 	ConstructMockMsgCreateClient() MsgCreateClient
+	ConstructTrustedEthereumMsgCreateClient(publicKey cryptotypes.PubKey, diversifier string) MsgCreateClient
 
 	CreateClient(ctx context.Context, msg MsgCreateClient) (string, error)
 
 	ConstructTendermintUpdateTMClientHeader(counterparty TestChainI, clientID string) MsgUpdateClient
 	ConstructMockMsgUpdateClient(clientID string) MsgUpdateClient
+	ConstructTrustedEthereumMsgUpdateClient(clientID string, privateKey cryptotypes.PrivKey, divisifier string) MsgUpdateClient
 
 	UpdateClient(ctx context.Context, msg MsgUpdateClient) error
 

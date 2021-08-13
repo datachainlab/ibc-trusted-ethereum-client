@@ -3,16 +3,34 @@ package ibctesting
 import (
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	connectiontypes "github.com/cosmos/ibc-go/modules/core/03-connection/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
 	ibctmtypes "github.com/cosmos/ibc-go/modules/light-clients/07-tendermint/types"
 	ibcmocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 
+	trustedethereumtypes "github.com/datachainlab/ibc-trusted-ethereum-client/modules/light-clients/trusted-ethereum/types"
 	"github.com/datachainlab/ibc-trusted-ethereum-client/tests/testing/types"
 )
 
 type ClientConfig interface {
 	GetClientType() string
+}
+
+type TrustedEthereumConfig struct {
+	Diversifier string
+	PrivateKey  *secp256k1.PrivKey
+}
+
+func (cfg *TrustedEthereumConfig) GetClientType() string {
+	return trustedethereumtypes.TrustedEthereum
+}
+
+func NewTrustedEthereumConfig(diversifier string) *TrustedEthereumConfig {
+	return &TrustedEthereumConfig{
+		Diversifier: diversifier,
+		PrivateKey:  secp256k1.GenPrivKey(),
+	}
 }
 
 type MockConfig struct {
