@@ -12,6 +12,7 @@ import (
 	channeltypes "github.com/cosmos/ibc-go/modules/core/04-channel/types"
 	commitmenttypes "github.com/cosmos/ibc-go/modules/core/23-commitment/types"
 	"github.com/cosmos/ibc-go/modules/core/exported"
+	mocktypes "github.com/datachainlab/ibc-mock-client/modules/light-clients/xx-mock/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -141,7 +142,6 @@ func (cs ClientState) VerifyClientState(
 		return err
 	}
 
-	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(provingConsensusState.Root.Hash)
 	slot, err := ClientStateCommitmentSlot(counterpartyClientIdentifier)
 	if err != nil {
@@ -172,20 +172,23 @@ func (cs ClientState) VerifyClientConsensusState(
 	proof []byte,
 	consensusState exported.ConsensusState,
 ) error {
+	if consensusState == nil {
+		return sdkerrors.Wrap(clienttypes.ErrInvalidConsensus, "consensus state cannot be empty")
+	}
+	if _, ok := consensusState.(*mocktypes.ConsensusState); ok {
+		// ClientKeeper.GetSelfConsensusState can't know the exact same ConsensusState to be proved.
+		return nil
+	}
+
 	merkleProof, provingConsensusState, err := produceVerificationArgs(store, cdc, cs, height, prefix, proof)
 	if err != nil {
 		return err
 	}
 
-	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(provingConsensusState.Root.Hash)
 	slot, err := ConsensusStateCommitmentSlot(counterpartyClientIdentifier, consensusHeight.GetRevisionHeight())
 	if err != nil {
 		return err
-	}
-
-	if consensusState == nil {
-		return sdkerrors.Wrap(clienttypes.ErrInvalidConsensus, "consensus state cannot be empty")
 	}
 
 	bz, err := cdc.MarshalInterface(consensusState)
@@ -212,7 +215,6 @@ func (cs ClientState) VerifyConnectionState(
 		return err
 	}
 
-	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(consensusState.Root.Hash)
 	slot, err := ConnectionCommitmentSlot(connectionID)
 	if err != nil {
