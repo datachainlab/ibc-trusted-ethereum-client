@@ -1,6 +1,7 @@
 package types
 
 import (
+	"crypto/sha256"
 	"strings"
 
 	ics23 "github.com/confio/ics23/go"
@@ -141,7 +142,6 @@ func (cs ClientState) VerifyClientState(
 		return err
 	}
 
-	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(provingConsensusState.Root.Hash)
 	slot, err := ClientStateCommitmentSlot(counterpartyClientIdentifier)
 	if err != nil {
@@ -177,7 +177,6 @@ func (cs ClientState) VerifyClientConsensusState(
 		return err
 	}
 
-	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(provingConsensusState.Root.Hash)
 	slot, err := ConsensusStateCommitmentSlot(counterpartyClientIdentifier, consensusHeight.GetRevisionHeight())
 	if err != nil {
@@ -212,7 +211,6 @@ func (cs ClientState) VerifyConnectionState(
 		return err
 	}
 
-	// TODO check if this impl is correct (about size)
 	root := common.BytesToHash(consensusState.Root.Hash)
 	slot, err := ConnectionCommitmentSlot(connectionID)
 	if err != nil {
@@ -293,7 +291,7 @@ func (cs ClientState) VerifyPacketCommitment(
 		return err
 	}
 
-	return VerifyEthStorageProof(merkleProof, root, slot, crypto.Keccak256(commitmentBytes))
+	return VerifyEthStorageProof(merkleProof, root, slot, commitmentBytes)
 }
 
 // VerifyPacketAcknowledgement verifies a proof of an incoming packet
@@ -322,7 +320,8 @@ func (cs ClientState) VerifyPacketAcknowledgement(
 		return err
 	}
 
-	return VerifyEthStorageProof(merkleProof, root, slot, crypto.Keccak256(acknowledgement))
+	v := sha256.Sum256(acknowledgement)
+	return VerifyEthStorageProof(merkleProof, root, slot, v[:])
 }
 
 // VerifyPacketReceiptAbsence verifies a proof of the absence of an
