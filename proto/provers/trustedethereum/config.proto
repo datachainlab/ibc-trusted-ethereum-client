@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package ibc.trustedethereum.prover.v1;
+
+option go_package = "github.com/datachainlab/ibc-trusted-ethereum-client/pkg/ethereum";
+import "gogoproto/gogo.proto";
+
+option (gogoproto.goproto_getters_all) = false;
+
+message ProverConfig {
+  string chain_id = 1;
+  int64  eth_chain_id = 2;
+  string rpc_addr = 3;
+
+  // Currently, the only local signer is supported for prover.
+  // Remote signer may replace these in the future.
+  string hdw_mnemonic = 4;
+  string hdw_path = 5;
+
+  string ibc_host_address = 6;
+
+  string diversifier = 7;
+}

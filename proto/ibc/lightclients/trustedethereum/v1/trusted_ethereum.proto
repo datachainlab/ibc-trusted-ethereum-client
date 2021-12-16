@@ -1,8 +1,5 @@
 syntax = "proto3";
-// TODO
-// Since other client designs are being considered, it may be necessary to use a
-// name here that distinguishes them.
-package ibc.lightclients.ethereum.v1;
+package ibc.lightclients.trustedethereum.v1;
 
 import "gogoproto/gogo.proto";
 import "google/protobuf/any.proto";
@@ -30,7 +27,7 @@ message ConsensusState {
   // was stored.
   uint64 timestamp = 1;
 
-  // storage root for ibc_store_address 
+  // storage root for ibc_store_address
   ibc.core.commitment.v1.MerkleRoot root = 2 [(gogoproto.nullable) = false];
 
   // public key of the trusted submitter
