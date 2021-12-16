@@ -3,7 +3,7 @@ on: pull_request
 
 env:
   CACHE_BIN_RELAYER_KEY: bin-relayer
-  CACHE_BIN_RELAYER_PATH: ./e2e/build/uly
+  CACHE_BIN_RELAYER_PATH: ./e2e/relayer/build/uly
   CACHE_DOCKER_TENDERMINT_KEY: docker-tendermint
   CACHE_DOCKER_TENDERMINT_DIR: /tmp/tendermint
   CACHE_DOCKER_GETH_KEY: docker-geth
@@ -94,7 +94,7 @@ jobs:
         run: |
           ./save_docker_images $CACHE_DOCKER_TENDERMINT_DIR tendermint-chain0:latest tendermint-chain1:latest
 
-tm2eth-test:
+  tm2eth-test:
     name: tm2eth-test
     runs-on: ubuntu-20.04
     needs:
@@ -134,7 +134,7 @@ tm2eth-test:
           make test
           make network-down
 
-eth2tm-test:
+  eth2tm-test:
     name: eth2tm-test
     runs-on: ubuntu-20.04
     needs:
