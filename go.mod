@@ -15,7 +15,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/hyperledger-labs/yui-ibc-solidity v0.0.0-20211102033703-b1c507b339f0
-	github.com/hyperledger-labs/yui-relayer v0.1.1-0.20211209032245-495b5eed40e2
+	github.com/hyperledger-labs/yui-relayer v0.1.1-0.20211201082514-122526148f85
 	github.com/rakyll/statik v0.1.7
 	github.com/spf13/cast v1.3.1
 	github.com/spf13/cobra v1.1.3
