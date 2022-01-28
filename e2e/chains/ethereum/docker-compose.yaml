@@ -1,0 +1,41 @@
+version: '3.5'
+networks:
+  escrow:
+    name: &network-common escrow
+
+services:
+  ethereum-geth0-scaffold:
+    container_name: ethereum-geth0-scaffold
+    build:
+      context: ./geth
+      args:
+        - CHAINID=1337
+        - NETWORKID=${NETWORK_ID0}
+    ports:
+      - 8545:8545
+      - 8546:8546
+      - 30303:30303
+    networks:
+      - *network-common
+    healthcheck: &healthcheck-geth
+      test: ["CMD", "wget", "--spider", "--proxy", "off", "http://localhost:8545"]
+      start_period: 3s
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  ethereum-geth1-scaffold:
+    container_name: ethereum-geth1-scaffold
+    build:
+      context: ./geth
+      args:
+        - CHAINID=1338
+        - NETWORKID=${NETWORK_ID1}
+    ports:
+      - 8645:8545
+      - 8646:8546
+      - 30403:30303
+    networks:
+      - *network-common
+    healthcheck:
+      *healthcheck-geth
