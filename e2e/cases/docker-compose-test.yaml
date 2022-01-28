@@ -1,0 +1,63 @@
+version: '3.5'
+
+networks:
+  relayer-e2e:
+    name: &network-common relayer-e2e
+
+services:
+  # Ethereum - ganache
+  ethereum-geth0:
+    container_name: ethereum-geth0
+    image: ethereum-geth0:${TAG}
+    ports:
+      - 8545:8545
+    networks:
+      - *network-common
+    healthcheck: &healthcheck-geth
+      test: ["CMD", "wget", "--spider", "--proxy", "off", "http://localhost:8545"]
+      start_period: 3s
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  ethereum-geth1:
+    container_name: ethereum-geth1
+    image: ethereum-geth1:${TAG}
+    ports:
+      - 8645:8545
+    networks:
+      - *network-common
+    healthcheck:
+      *healthcheck-geth
+
+  # Tendermint
+  tendermint-chain0:
+    container_name: tendermint-chain0
+    image: tendermint-chain0:${TAG}
+    ports:
+      - 26656:26656
+      - 26657:26657
+      - 6060:6060
+      - 9090:9090
+    healthcheck:
+      test: "wget -q -O - http://localhost:26657/health || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - *network-common
+  tendermint-chain1:
+    container_name: tendermint-chain1
+    image: tendermint-chain1:${TAG}
+    ports:
+      - 26566:26656
+      - 26557:26657
+      - 6061:6060
+      - 9091:9090
+    healthcheck:
+      test: "wget -q -O - http://localhost:26657/health || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - *network-common
+
